@@ -1,0 +1,521 @@
+#define SSGI_SAMPLER_COUNT 64
+
+#define SSGI_DEPTH_DIFF_MULTIPLIER 50
+
+#if SSGI_QUALITY == 1
+#   define SSGI_RAY_COUNT 1
+#elif SSGI_QUALITY == 2
+#   define SSGI_RAY_COUNT 2
+#elif SSGI_QUALITY == 3
+#   define SSGI_RAY_COUNT 4
+#else
+#   define SSGI_RAY_COUNT 1
+#endif
+
+static const float2 kSSGIBlur1QuadOffset = 2.0 / ViewportSize;
+static const float2 kSSGIBlur2QuadOffset = 2 * kSSGIBlur1QuadOffset;
+static const float2 kSSGIBlur3QuadOffset = 2 * kSSGIBlur2QuadOffset;
+static const float2 kSSGIBlur4QuadOffset = 2 * kSSGIBlur3QuadOffset;
+static const float2 kSSGIBlurFinalQuadOffset = kSSGIBlur4QuadOffset;
+
+static const float2 kSSGIMaxLevelTexel = 2 * 2 * 2 * 2 / ViewportSize;
+
+static const float2 SSGIScale = ViewportSize * 0.5;
+
+static const float4 SSGIOffsetX1 = float4(1.3846153846 / ViewportSize.x, 0.0, 3.2307692308 / ViewportSize.x, 0.0);
+static const float4 SSGIOffsetX2 = SSGIOffsetX1 * 2.0;
+static const float4 SSGIOffsetX3 = SSGIOffsetX2 * 2.0;
+static const float4 SSGIOffsetX4 = SSGIOffsetX3 * 2.0;
+
+static const float4 SSGIOffsetY1 = float4(0.0, 2.0 * 1.3846153846 / ViewportSize.y, 0.0, 2.0 * 3.2307692308 / ViewportSize.y);
+static const float4 SSGIOffsetY2 = SSGIOffsetY1 * 2.0;
+static const float4 SSGIOffsetY3 = SSGIOffsetY2 * 2.0;
+static const float4 SSGIOffsetY4 = SSGIOffsetY3 * 2.0;
+
+texture SSGISampleMap : RENDERCOLORTARGET<float2 ViewportRatio = {1.0, 1.0}; string Format = "A16B16G16R16F";>;
+sampler SSGISampleMapSamp = sampler_state {
+    texture = <SSGISampleMap>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+static const float2 SSGIX1MapTexelSize = 2.0 / ViewportSize;
+texture SSGIX1Map : RENDERCOLORTARGET< float2 ViewportRatio = {0.5, 0.5}; string Format = "A16B16G16R16F";>;
+sampler SSGIX1MapSamp = sampler_state {
+    texture = <SSGIX1Map>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+texture SSGIX1MapTemp : RENDERCOLORTARGET<float2 ViewportRatio = {0.5, 0.5}; string Format = "A16B16G16R16F";>;
+sampler SSGIX1MapTempSamp = sampler_state {
+    texture = <SSGIX1MapTemp>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+static const float2 SSGIX2MapTexelSize = 4.0 / ViewportSize;
+texture SSGIX2Map : RENDERCOLORTARGET<float2 ViewportRatio = {0.25, 0.25}; string Format = "A16B16G16R16F";>;
+sampler SSGIX2MapSamp = sampler_state {
+    texture = <SSGIX2Map>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+texture SSGIX2MapTemp : RENDERCOLORTARGET<float2 ViewportRatio = {0.25, 0.25}; string Format = "A16B16G16R16F";>;
+sampler SSGIX2MapTempSamp = sampler_state {
+    texture = <SSGIX2MapTemp>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+static const float2 SSGIX3MapTexelSize = 8.0 / ViewportSize;
+texture SSGIX3Map : RENDERCOLORTARGET<float2 ViewportRatio = {0.125, 0.125}; string Format = "A16B16G16R16F";>;
+sampler SSGIX3MapSamp = sampler_state {
+    texture = <SSGIX3Map>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+texture SSGIX3MapTemp : RENDERCOLORTARGET<float2 ViewportRatio = {0.125, 0.125}; string Format = "A16B16G16R16F";>;
+sampler SSGIX3MapTempSamp = sampler_state {
+    texture = <SSGIX3MapTemp>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+static const float2 SSGIX4MapTexelSize = 16.0 / ViewportSize;
+texture SSGIX4Map : RENDERCOLORTARGET<float2 ViewportRatio = {0.0625, 0.0625}; string Format = "A16B16G16R16F";>;
+sampler SSGIX4MapSamp = sampler_state {
+    texture = <SSGIX4Map>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+texture SSGIX4MapTemp : RENDERCOLORTARGET<float2 ViewportRatio = {0.0625, 0.0625}; string Format = "A16B16G16R16F";>;
+sampler SSGIX4MapTempSamp = sampler_state {
+    texture = <SSGIX4MapTemp>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture SSGIWideBlurMap : RENDERCOLORTARGET<float2 ViewportRatio = {0.0625, 0.0625}; string Format = "A16B16G16R16F";>;
+sampler SSGIWideBlurMapSamp = sampler_state {
+    texture = <SSGIWideBlurMap>;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+    AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture2D SSGINoiseTexture < string ResourceName = "Shader/textures/noise.png";>;
+sampler2D SSGINoiseTextureSampler = sampler_state
+{
+    texture = <SSGINoiseTexture>;
+	FILTER = POINT;
+	ADDRESSU = WRAP; ADDRESSV = WRAP;
+};
+
+bool SSGITraceScreenSpaceRay(float3 viewPosition, float3 rayDirection, float maxDistance, float jitter, out float2 hitPixel, out float3 hitPos)
+{
+	float4 startPosition = float4(viewPosition, 1);
+	float4 startScreenPos = mul(startPosition, matProject);
+
+	float4 endPosition = float4(viewPosition + rayDirection * maxDistance, 1);
+	float4 endScreenPos = mul(endPosition, matProject);
+
+	startScreenPos.xy = startScreenPos.xy * float2(0.5, -0.5) + 0.5 * startScreenPos.w;
+	endScreenPos.xy = endScreenPos.xy * float2(0.5, -0.5) + 0.5 * endScreenPos.w;
+
+	float4 deltaScreenPos = endScreenPos - startScreenPos;
+
+	float stepSize = 1.0 / SSGI_SAMPLER_COUNT;
+	float stepLength = jitter * stepSize + stepSize;
+
+	float bestLen = 0;
+	float bestIntervalSize = maxDistance / (SSGI_SAMPLER_COUNT * 1.6) * 1.0;
+
+    {
+        for (int i = 0; i < SSGI_SAMPLER_COUNT; i += 4)
+        {
+            float4 sampleLength = stepLength + stepSize * float4(0, 1, 2, 3);
+
+            float4 samplePos1 = startScreenPos + deltaScreenPos * sampleLength.x;
+            float4 samplePos2 = startScreenPos + deltaScreenPos * sampleLength.y;
+            float4 samplePos3 = startScreenPos + deltaScreenPos * sampleLength.z;
+            float4 samplePos4 = startScreenPos + deltaScreenPos * sampleLength.w;
+            float4 samplePosZ = float4(samplePos1.w, samplePos2.w, samplePos3.w, samplePos4.w);
+
+            float4 sampleDepth;
+            sampleDepth.r = tex2Dproj(Gbuffer8Map, samplePos1).r;
+            sampleDepth.g = tex2Dproj(Gbuffer8Map, samplePos2).r;
+            sampleDepth.b = tex2Dproj(Gbuffer8Map, samplePos3).r;
+            sampleDepth.a = tex2Dproj(Gbuffer8Map, samplePos4).r;
+
+            float4 depthDiff = samplePosZ - abs(sampleDepth);
+
+            bool4 hit = abs(depthDiff) < bestIntervalSize;
+            if (any(hit))
+            {
+                float hitIndex = 3;
+                hitIndex = hit[2] ? 2 : hitIndex;
+                hitIndex = hit[1] ? 1 : hitIndex;
+                hitIndex = hit[0] ? 0 : hitIndex;
+                bestLen = stepLength + stepSize * hitIndex;
+                break;
+            }
+
+            stepLength += stepSize * 4;
+        }
+    }
+
+	float4 projPos = startScreenPos + deltaScreenPos * bestLen;
+
+	hitPixel = projPos.xy / projPos.w;
+
+    projPos.xy = (projPos.xy - 0.5 * projPos.w) / float2(0.5, -0.5);
+    hitPos = mul(projPos, matProjectInverse).xyz;
+
+	if (hitPixel.x < 0.0 || hitPixel.x > 1.0 || hitPixel.y < 0.0 || hitPixel.y > 1.0)
+	{
+		bestLen = 0;
+	}
+
+	return bestLen > 0 ? 1 : 0;
+}
+
+float InterleavedGradientNoise(float2 pixCoord, int frameCount)
+{
+    const float3 magic = float3(0.06711056f, 0.00583715f, 52.9829189f);
+    float2 frameMagicScale = float2(2.083f, 4.867f);
+    pixCoord += frameCount * frameMagicScale;
+    return frac(magic.z * frac(dot(pixCoord, magic.xy)));
+}
+
+float SinFromCos(float cosX)
+{
+    return sqrt(saturate(1 - cosX * cosX));
+}
+
+float3 SphericalToCartesian(float cosPhi, float sinPhi, float cosTheta)
+{
+    float sinTheta = SinFromCos(cosTheta);
+
+    return float3(float2(cosPhi, sinPhi) * sinTheta, cosTheta);
+}
+
+float3 SphericalToCartesian(float phi, float cosTheta)
+{
+    float sinPhi, cosPhi;
+    sincos(phi, sinPhi, cosPhi);
+
+    return SphericalToCartesian(cosPhi, sinPhi, cosTheta);
+}
+
+float3 SampleSphereUniform(float u1, float u2)
+{
+    float phi      = 2 * 3.1415926535 * u2;
+    float cosTheta = 1.0 - 2.0 * u1;
+
+    return SphericalToCartesian(phi, cosTheta);
+}
+
+float3 SampleHemisphereCosine(float u1, float u2, float3 normal)
+{
+    float3 pointOnSphere = SampleSphereUniform(u1, u2);
+    return normalize(normal + pointOnSphere);
+}
+
+float3 GetJitteredNormal(float3 noises, float3 normal, float goldenRatio) {
+    noises.x = frac(noises.x + goldenRatio);
+    float3 jitteredNormal = SampleHemisphereCosine(noises.x, noises.z, normal);
+    return normalize(jitteredNormal);
+}
+
+float4 SSGIRayCastPS(in float4 coord : TEXCOORD0, in float3 viewdir : TEXCOORD1) : COLOR 
+{
+    float4 MRT0 = tex2Dlod(Gbuffer5Map, float4(coord.xy, 0, 0));
+	float4 MRT1 = tex2Dlod(Gbuffer6Map, float4(coord.xy, 0, 0));
+	float4 MRT2 = tex2Dlod(Gbuffer7Map, float4(coord.xy, 0, 0));
+	float4 MRT3 = tex2Dlod(Gbuffer8Map, float4(coord.xy, 0, 0));
+
+	MaterialParam material;
+	DecodeGbuffer(MRT0, MRT1, MRT2, MRT3, material);
+
+    float3 test = material.albedo + material.specular;
+    float alpha = sum(test);
+	clip(alpha - 1e-5);
+
+    float3 view = normalize(viewdir);
+	float3 rayStart = view * material.linearDepth / view.z;
+    float3 normal = material.normal;
+
+    int frameCount = 60;
+    float screenNoise = InterleavedGradientNoise(coord.zw, frameCount);
+    float2 noise = tex2Dlod(SSGINoiseTextureSampler, float4(coord.xy, 0, 0)).xw;
+
+    float3 noises = float3(noise.xy, screenNoise);
+    float jitterFactor = noises.y * 0.1 + 1.0;
+
+    float sampleDistance = 0.4 * material.linearDepth;
+
+    float3 indirect = 0;
+    float acum = 0;
+    for (int i = 0; i < SSGI_RAY_COUNT; i++)
+    {
+        float3 rayDir = GetJitteredNormal(noises, normal, acum);
+        acum += 0.618;
+
+        float2 hitPixel = 0;
+        float3 hitPos = 0;
+        float maxDistance = sampleDistance;
+        bool hitTest = SSGITraceScreenSpaceRay(rayStart, rayDir, maxDistance, jitterFactor, hitPixel, hitPos);
+        if (hitTest)
+        {
+            float3 color = tex2Dlod(ShadingMapPointSamp, float4(hitPixel, 0, 0)).rgb;
+            color = clamp(color, 0, 32);
+
+            float dist = length(hitPos - rayStart) * 0.08;
+            float distSqr = dist * dist;
+            float distAtten = rcp(1.0 + distSqr);
+            float invDistSqrWeight = lerp(1.0, distAtten, mSSGIDistAtten);
+			color *= invDistSqrWeight;
+
+            indirect += color;
+        }
+    }
+    indirect /= SSGI_RAY_COUNT;
+
+    float luma = luminance(indirect);
+    indirect *= saturate(mSSGIMaxBrightness / (luma + 0.001));
+    indirect *= mSSGIIntensity * (luma > mSSGIThreshold);
+
+    return float4(indirect, material.linearDepth);
+}
+
+void ComputeSample(sampler source, sampler nsource, float depthM, float3 normM, float2 uv, float gaussWeight, inout float4 sum, inout float sumWeight) 
+{
+    float4 c = tex2Dlod(source, float4(uv, 0, 0));
+    float depth = c.w;
+    float dDiff = abs(depthM - depth);
+    float r = dDiff * 4.0;
+
+    float3 norm = DecodeGBufferNormal(tex2Dlod(nsource, float4(uv, 0, 0)));
+    float nDiff = 1 - max(0, dot(norm, normM));
+    float n = nDiff * 0.5;
+
+    r += n;
+
+    float g = exp(-r*r);
+    float w = g * gaussWeight;
+    sum += c * w;
+    sumWeight += w;
+}
+
+float4 SSGIGaussionBlurPS(in float2 coord : TEXCOORD0, uniform sampler source, uniform float4 offset) : COLOR
+{
+    float2 uv = coord;
+    float4 colorM = tex2Dlod(source, float4(uv, 0, 0));
+    float depthM = colorM.w;
+    if (depthM - 1e-5 < 0)
+        return 0;
+
+    sampler nsource = Gbuffer6Map;
+    
+    float3 normM = DecodeGBufferNormal(tex2Dlod(nsource, float4(uv, 0, 0)));
+
+    float2 uv1 = coord - offset.xy * 1.0;
+    float2 uv2 = coord + offset.xy * 1.0;
+    float2 uv3 = coord - offset.zw * 1.0;
+    float2 uv4 = coord + offset.zw * 1.0;
+
+    float w = 0.2270270270;
+    float4 sum = colorM * w;
+    float sumWeight = w;
+
+    ComputeSample(source, nsource, depthM, normM, uv1, 0.3162162162, sum, sumWeight);
+    ComputeSample(source, nsource, depthM, normM, uv2, 0.3162162162, sum, sumWeight);
+    ComputeSample(source, nsource, depthM, normM, uv3, 0.0702702703, sum, sumWeight);
+    ComputeSample(source, nsource, depthM, normM, uv4, 0.0702702703, sum, sumWeight);
+
+    float4 res = sum / sumWeight;
+	return float4(res.rgb, depthM);
+}
+
+float4 SSGIWideKernelBlurPS(in float2 coord : TEXCOORD0, uniform sampler source) : COLOR
+{
+    float4 colorM = tex2Dlod(source, float4(coord, 0, 0));
+    float depthM = colorM.w;
+    if (depthM - 1e-5 < 0)
+        return 0;
+
+    float3 normM = DecodeGBufferNormal(tex2Dlod(Gbuffer6Map, float4(coord, 0, 0)));
+
+    float3 sum = 0;
+    float sumWeight = 0.0001;
+
+    float2 texelSize = kSSGIMaxLevelTexel * mSSGIBlurSpread;
+
+    static float2 offsets[64] = {
+        float2(0.0000000, 0.0000000), float2(0.1092819, -1.2452140), float2(1.0755790, 1.4029010), float2(-2.1319680, -0.3771141),
+        float2(2.1093880, -1.3418210), float2(-0.7256145, 2.6992570), float2(-1.4112360, -2.7172440), float2(3.1065140, 1.1344910),
+        float2(-3.2680540, 1.3490090), float2(1.5894190, -3.3965060), float2(1.1830280, 3.7716650), float2(-3.5869800, -2.0787220),
+        float2(4.2291300, -0.9297680), float2(-2.5920690, 3.6869620), float2(-0.6010606, -4.6382910), float2(3.7018480, 3.1199110),
+        float2(-4.9957320, 0.2065974), float2(3.6532180, -3.6354530), float2(-0.2449574, 5.2976420), float2(-3.4909930, -4.1833590),
+        float2(5.5402510, 0.7454209), float2(-4.7020520, 3.2715800), float2(1.2868110, -5.7200650), float2(2.9805090, 5.2013560),
+        float2(-5.8340360, -1.8612000), float2(5.6736900, -2.6214070), float2(-2.4606510, 5.8796460), float2(-2.1983310, -6.1118640),
+        float2(5.8549900, 3.0771960), float2(-6.5091140, 1.7158030), float2(3.7028470, -5.7588180), float2(1.1788310, 6.8591480),
+        float2(-5.5905680, -4.3296190), float2(7.1561880, -0.5929008), float2(-4.9495820, 5.3503920), float2(0.0360481, -7.3950160),
+        float2(5.0391630, 5.5548990), float2(-7.5710140, -0.7016501), float2(6.1378870, -4.6584760), float2(-1.3971590, 7.6802030),
+        float2(-4.2106480, -6.6910780), float2(7.7192780, 2.1154980), float2(-7.2072710, 3.6986930), float2(2.8493120, -7.6856360),
+        float2(3.1263100, 7.6796020), float2(-7.5774060, -3.5910310), float2(8.1015960, -2.4978510), float2(-4.3329320, 7.3934640),
+        float2(-1.8182850, -8.4672280), float2(7.1334430, 5.0672090), float2(-8.7709830, 1.0931570), float2(5.7860390, -6.7977490),
+        float2(0.3285438, 9.0078960), float2(-6.3875520, -6.4816530), float2(9.1736150, 0.4690015), float2(-7.1464080, 5.9047870),
+        float2(1.2925040, -9.2644270), float2(5.3521360, 7.7728580), float2(-9.2773140, -2.1346290), float2(8.3538210, -4.7330090),
+        float2(-2.9877480, 9.2099720), float2(-4.0515210, -8.8824490), float2(9.0608430, 3.8440030), float2(-9.3522910, 3.3124590)
+    };
+    for (int k = 1; k < 64; k++) {
+        
+        float2 uvN = coord + offsets[k] * texelSize;
+        float4 rgbN = tex2Dlod(source, float4(uvN, 0, 0));
+
+        float w = 1.0;
+
+        float depth =  rgbN.w;
+        float dDiff = abs(depthM - depth);
+        w += dDiff * 0.04;
+
+        float3 norm = DecodeGBufferNormal(tex2Dlod(Gbuffer6Map, float4(uvN, 0, 0)));
+        float nDiff = 1 - max(0, dot(norm, normM));
+        w += nDiff * 0.7;
+
+        w = exp(-w * w);
+
+        sumWeight += w;
+        sum += rgbN.rgb * w;
+    }
+
+    float3 res = sum / sumWeight;
+
+    return float4(res, depthM);
+}
+
+float4 SSGIGetIndirect(sampler source, float2 sourceTexelSize, float2 uv, float depth) {        
+    float4 nearestColor = tex2Dlod(source, float4(uv, 0, 0));
+    float depthM = nearestColor.w;
+    float diff = abs(depth - depthM);
+
+    if (diff > 0.00001) {
+        float m = 0.5;
+
+        float2 uvN = uv + float2(0, sourceTexelSize.y * m );
+        float2 uvS = uv - float2(0, sourceTexelSize.y * m);
+        float2 uvE = uv + float2(sourceTexelSize.x * m, 0);
+        float2 uvW = uv - float2(sourceTexelSize.x * m, 0);
+
+        float4 colorN = tex2Dlod(source, float4(uvN, 0, 0));
+        float4 colorS = tex2Dlod(source, float4(uvS, 0, 0));
+        float4 colorE = tex2Dlod(source, float4(uvE, 0, 0));
+        float4 colorW = tex2Dlod(source, float4(uvW, 0, 0));
+
+        float4 depths = float4(colorN.w, colorS.w, colorE.w, colorW.w);
+        float4 dDiff = abs(depths - depth.xxxx);
+
+        float lowestDiff = diff;
+        if (dDiff.x < lowestDiff) { lowestDiff = dDiff.x; nearestColor = colorN; }
+        if (dDiff.y < lowestDiff) { lowestDiff = dDiff.y; nearestColor = colorS; }
+        if (dDiff.z < lowestDiff) { lowestDiff = dDiff.z; nearestColor = colorE; }
+        if (dDiff.w < lowestDiff) { lowestDiff = dDiff.w; nearestColor = colorW; }
+    }
+    return nearestColor;
+}
+
+float4 SSGIUpSampleVS(	
+    in float4 Position : POSITION,
+	in float2 Texcoord : TEXCOORD,
+	out float4 oTexcoord : TEXCOORD0,
+	uniform float2 dstOffset,
+    uniform float2 srcOffset
+    ) : POSITION
+{
+	oTexcoord = float4(Texcoord + dstOffset * 0.5, Texcoord + srcOffset * 0.5);
+	return Position;
+}
+
+float4 SSGIUpsamplePS(in float4 coord : TEXCOORD0, uniform sampler source, uniform float2 sourceTexelSize) : COLOR
+{
+    float4 MRT0 = tex2Dlod(Gbuffer5Map, float4(coord.xy, 0, 0));
+	float4 MRT1 = tex2Dlod(Gbuffer6Map, float4(coord.xy, 0, 0));
+	float4 MRT2 = tex2Dlod(Gbuffer7Map, float4(coord.xy, 0, 0));
+	float4 MRT3 = tex2Dlod(Gbuffer8Map, float4(coord.xy, 0, 0));
+
+	MaterialParam material;
+	DecodeGbuffer(MRT0, MRT1, MRT2, MRT3, material);
+
+    float3 test = material.albedo + material.specular;
+    float alpha = sum(test);
+	if(alpha - 1e-5 < 0)
+        return 0;
+
+    return SSGIGetIndirect(source, sourceTexelSize, coord.zw, material.linearDepth);
+}
+
+float4 SSGIFinalCombinePS(
+    in float2 coord : TEXCOORD0, 
+    in float3 viewdir : TEXCOORD1, 
+    uniform sampler source, 
+    uniform float2 sourceTexelSize) : COLOR
+{
+    float4 MRT5 = tex2Dlod(Gbuffer5Map, float4(coord, 0, 0));
+	float4 MRT6 = tex2Dlod(Gbuffer6Map, float4(coord, 0, 0));
+	float4 MRT7 = tex2Dlod(Gbuffer7Map, float4(coord, 0, 0));
+	float4 MRT8 = tex2Dlod(Gbuffer8Map, float4(coord, 0, 0));
+
+	MaterialParam material;
+	DecodeGbuffer(MRT5, MRT6, MRT7, MRT8, material);
+    float3 albedo = material.albedo;
+    float3 specular = material.specular;
+    float3 test = albedo + specular;
+    float alpha = sum(test);
+	if(alpha - 1e-5 < 0)
+        return 0;
+
+    float4 current = SSGIGetIndirect(source, sourceTexelSize, coord.xy, material.linearDepth);
+    float3 color = current.rgb;
+
+#if SSDO_QUALITY
+    float3 L = mul(-SunDirection, (float3x3)matView);
+	float3 bentNormal = tex2Dlod(SSDOMapSamp, float4(coord, 0, 0)).xyz * 2 - 1;
+	float ssdo = pow(1 - saturate(dot(bentNormal, L)), mSSDOScale);
+	color *= ssdo;
+#endif
+    color = color * albedo + color * specular * 0.75;
+    if (material.alpha > 1e-5)
+    {
+        color *= material.alpha;
+    }
+
+    float3 N = material.normal;
+    float3 V = normalize(viewdir);
+    float NoV = dot(N, V) * 0.5 + 0.5;
+    color *= NoV;
+
+    color *= min(1.0, material.linearDepth * mSSGINearAtten * 0.08);
+    color *= CalculateLayer(LayerSamp, coord, mSSGILayers);
+
+    return float4(color, 1);
+}

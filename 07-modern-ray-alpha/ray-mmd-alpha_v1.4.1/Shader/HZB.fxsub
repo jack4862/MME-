@@ -1,0 +1,357 @@
+static const float2 kHZBMip1ViewportSize = ViewportSize;
+static const float2 kHZBMip2ViewportSize = floor(ViewportSize / 2.0);
+static const float2 kHZBMip3ViewportSize = floor(ViewportSize / 4.0);
+static const float2 kHZBMip4ViewportSize = floor(ViewportSize / 8.0);
+static const float2 kHZBMip5ViewportSize = floor(ViewportSize / 16.0);
+static const float2 kHZBMip6ViewportSize = floor(ViewportSize / 32.0);
+static const float2 kHZBMip7ViewportSize = floor(ViewportSize / 64.0);
+static const float2 kHZBMip8ViewportSize = floor(ViewportSize / 128.0);
+static const float2 kHZBMip9ViewportSize = floor(ViewportSize / 256.0);
+static const float2 kHZBMip10ViewportSize = floor(ViewportSize / 512.0);
+
+static const float2 kHZBMip1InvViewportSize = 1.0 / kHZBMip1ViewportSize;
+static const float2 kHZBMip2InvViewportSize = 1.0 / kHZBMip2ViewportSize;
+static const float2 kHZBMip3InvViewportSize = 1.0 / kHZBMip3ViewportSize;
+static const float2 kHZBMip4InvViewportSize = 1.0 / kHZBMip4ViewportSize;
+static const float2 kHZBMip5InvViewportSize = 1.0 / kHZBMip5ViewportSize;
+static const float2 kHZBMip6InvViewportSize = 1.0 / kHZBMip6ViewportSize;
+static const float2 kHZBMip7InvViewportSize = 1.0 / kHZBMip7ViewportSize;
+static const float2 kHZBMip8InvViewportSize = 1.0 / kHZBMip8ViewportSize;
+static const float2 kHZBMip9InvViewportSize = 1.0 / kHZBMip9ViewportSize;
+static const float2 kHZBMip10InvViewportSize = 1.0 / kHZBMip10ViewportSize;
+
+#define MIP_DIV_1  (1)
+#define MIP_DIV_2  (MIP_DIV_1 * 2)
+#define MIP_DIV_3  (MIP_DIV_2 * 2)
+#define MIP_DIV_4  (MIP_DIV_3 * 2)
+#define MIP_DIV_5  (MIP_DIV_4 * 2)
+#define MIP_DIV_6  (MIP_DIV_5 * 2)
+#define MIP_DIV_7  (MIP_DIV_6 * 2)
+#define MIP_DIV_8  (MIP_DIV_7 * 2)
+#define MIP_DIV_9  (MIP_DIV_8 * 2)
+#define MIP_DIV_10 (MIP_DIV_9 * 2)
+
+texture ZBufferMipmap1 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_1, 1.0/MIP_DIV_1};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap1Samp = sampler_state {
+	texture = <ZBufferMipmap1>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap2 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_2, 1.0/MIP_DIV_2};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap2Samp = sampler_state {
+	texture = <ZBufferMipmap2>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap3 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_3, 1.0/MIP_DIV_3};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap3Samp = sampler_state {
+	texture = <ZBufferMipmap3>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap4 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_4, 1.0/MIP_DIV_4};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap4Samp = sampler_state {
+	texture = <ZBufferMipmap4>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap5 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_5, 1.0/MIP_DIV_5};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap5Samp = sampler_state {
+	texture = <ZBufferMipmap5>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap6 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_6, 1.0/MIP_DIV_6};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap6Samp = sampler_state {
+	texture = <ZBufferMipmap6>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap7 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_7, 1.0/MIP_DIV_7};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap7Samp = sampler_state {
+	texture = <ZBufferMipmap7>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap8 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_8, 1.0/MIP_DIV_8};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap8Samp = sampler_state {
+	texture = <ZBufferMipmap8>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap9 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_9, 1.0/MIP_DIV_9};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap9Samp = sampler_state {
+	texture = <ZBufferMipmap9>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+texture ZBufferMipmap10 : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0/MIP_DIV_10, 1.0/MIP_DIV_10};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmap10Samp = sampler_state {
+	texture = <ZBufferMipmap10>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture ZBufferMipmap : RENDERCOLORTARGET<
+	float2 ViewportRatio = {1.0, 1.0};
+	string Format = "G16R16F";
+>;
+sampler ZBufferMipmapSamp = sampler_state {
+	texture = <ZBufferMipmap>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+float4 ZBufferMipmap_1_PS(in float2 pos: VPOS, in float2 coord : TEXCOORD0, uniform sampler source) : COLOR
+{
+    float2 uv0 = coord * 2 + ViewportOffset * float2(1 ,1);
+    float2 uv1 = coord * 2 + ViewportOffset * float2(1 ,3);
+    float2 uv2 = coord * 2 + ViewportOffset * float2(3 ,3);
+    float2 uv3 = coord * 2 + ViewportOffset * float2(3 ,1);
+
+    float depth0 = tex2Dlod(source, float4(uv0, 0, 0)).x;
+	float depth1 = tex2Dlod(source, float4(uv1, 0, 0)).x;
+	float depth2 = tex2Dlod(source, float4(uv2, 0, 0)).x;
+	float depth3 = tex2Dlod(source, float4(uv3, 0, 0)).x;
+
+	float2 duv = float2(min(depth0, depth1), max(depth0, depth1));
+	duv = float2(min(duv.x, depth2), max(duv.y, depth2));
+	duv = float2(min(duv.x, depth3), max(duv.y, depth3));
+
+    return float4(duv.xy, 0, 1);
+}
+
+float4 ZBufferMipmap_N_PS(in float2 pos: VPOS, in float2 coord : TEXCOORD0, uniform sampler source, uniform float2 viewportSize, uniform float2 superSize) : COLOR
+{
+    float2 uv0 = (coord * viewportSize * 2 + 0.5 * float2(1, 1)) / superSize;
+    float2 uv1 = (coord * viewportSize * 2 + 0.5 * float2(1, 3)) / superSize;
+    float2 uv2 = (coord * viewportSize * 2 + 0.5 * float2(3, 3)) / superSize;
+    float2 uv3 = (coord * viewportSize * 2 + 0.5 * float2(3, 1)) / superSize;
+
+    float2 depth0 = tex2Dlod(source, float4(uv0, 0, 0)).xy;
+	float2 depth1 = tex2Dlod(source, float4(uv1, 0, 0)).xy;
+	float2 depth2 = tex2Dlod(source, float4(uv2, 0, 0)).xy;
+	float2 depth3 = tex2Dlod(source, float4(uv3, 0, 0)).xy;
+
+	float2 duv = float2(min(depth0.x, depth1.x), max(depth0.y, depth1.y));
+	duv = float2(min(duv.x, depth2.x), max(duv.y, depth2.y));
+	duv = float2(min(duv.x, depth3.x), max(duv.y, depth3.y));
+
+    return float4(duv.xy, 0, 1);
+}
+
+static const float4 kMip2Rect = float4(0, 0, kHZBMip2ViewportSize / ViewportSize);
+static const float4 kMip3Rect = float4(0, kMip2Rect.y + kMip2Rect.w, kHZBMip3ViewportSize / ViewportSize);
+static const float4 kMip4Rect = float4(0, kMip3Rect.y + kMip3Rect.w, kHZBMip4ViewportSize / ViewportSize);
+static const float4 kMip5Rect = float4(0, kMip4Rect.y + kMip4Rect.w, kHZBMip5ViewportSize / ViewportSize);
+static const float4 kMip6Rect = float4(0, kMip5Rect.y + kMip5Rect.w, kHZBMip6ViewportSize / ViewportSize);
+static const float4 kMip7Rect = float4(0, kMip6Rect.y + kMip6Rect.w, kHZBMip7ViewportSize / ViewportSize);
+static const float4 kMip8Rect = float4(0, kMip7Rect.y + kMip7Rect.w, kHZBMip8ViewportSize / ViewportSize);
+static const float4 kMip9Rect = float4(0, kMip8Rect.y + kMip8Rect.w, kHZBMip9ViewportSize / ViewportSize);
+static const float4 kMip10Rect = float4(0, kMip9Rect.y + kMip9Rect.w, kHZBMip10ViewportSize / ViewportSize);
+
+float4 ZBufferMipmapCombinePS(in float2 coord : TEXCOORD0, uniform sampler source) : COLOR
+{
+    return float4(tex2Dlod(source, float4(coord, 0, 0)).xy, 0, 1);
+}
+
+static const float2 kMipCoordTrans[9] = {
+	kMip2Rect.xy,
+	kMip3Rect.xy,
+	kMip4Rect.xy,
+	kMip5Rect.xy,
+	kMip6Rect.xy,
+	kMip7Rect.xy,
+	kMip8Rect.xy,
+	kMip9Rect.xy,
+	kMip10Rect.xy
+};
+
+float2 HZBSampleDepth(float2 uv, int level, float2 levelSize)
+{	
+    [branch]
+	if (level == 0)
+    {
+        return tex2Dlod(Gbuffer8Map, float4(uv, 0, 0)).xx;
+    }
+	else if (level == 1)
+	{
+		float2 screenPos = floor(uv * levelSize) + 0.5;
+		float2 coord = screenPos * kHZBMip1InvViewportSize;
+		return tex2Dlod(ZBufferMipmap1Samp, float4(coord, 0, 0)).xy;
+	}
+	float2 trans = kMipCoordTrans[level - 2];
+	float2 screenPos = floor(uv * levelSize) + 0.5;
+	float2 coord = screenPos * InvViewportSize;
+	coord += trans;
+	return tex2Dlod(ZBufferMipmapSamp, float4(coord, 0, 0)).xy;
+}
+
+static const float2 kLevelSizes[11] = {
+	ViewportSize,
+	ViewportSize / 2.0,
+	ViewportSize / 4.0,
+	ViewportSize / 8.0,
+	ViewportSize / 16.0,
+	ViewportSize / 32.0,
+	ViewportSize / 64.0,
+	ViewportSize / 128.0,
+	ViewportSize / 256.0,
+	ViewportSize / 512.0,
+	ViewportSize / 1024.0,
+};
+
+static const float2 kInvLevelSizes[11] = {
+	1.0 / ViewportSize,
+	2.0 / ViewportSize,
+	4.0 / ViewportSize,
+	8.0 / ViewportSize,
+	16.0 / ViewportSize,
+	32.0 / ViewportSize,
+	64.0 / ViewportSize,
+	128.0 / ViewportSize,
+	256.0 / ViewportSize,
+	512.0 / ViewportSize,
+	1024.0 / ViewportSize,
+};
+
+float IntersectCellBoundary(float2 rayXY, float2 invDeltaXY, int2 cellId, float2 invLevelSize, float2 crossStep, float2 crossOffset) 
+{    
+    float2 cell = (cellId + crossStep) * invLevelSize + crossOffset;
+    float2 k2 = (cell - rayXY) * invDeltaXY;
+    
+    return min(k2.x, k2.y);
+}
+
+bool HZTrace(int count, float3 beginVS, float3 directionVS, float3 normalVS, float maxDistance, float3 params, out float2 hitPixel, out float3 hitPos)
+{
+	float normalBiasMul = params.x;
+	float directionBiasMul = params.y;
+	float thicknessMul = params.z;
+
+	int level = 0;
+
+    static const int maxLevel = 10;
+
+	float NdotD = saturate(dot(normalVS, directionVS));
+	float normalBias = 0.1 + normalBiasMul * (1.0 - NdotD);
+
+	float directionBias = 0.1 + directionBiasMul;
+
+    float4 beginClip = mul(float4(beginVS + normalVS * normalBias + directionVS * directionBias, 1), matProject);
+	float3 begin = float3(beginClip.xy / beginClip.w * float2(0.5, -0.5) + 0.5, beginClip.z / beginClip.w);
+
+	float4 endClip = mul(float4(beginVS + directionVS * maxDistance * 2, 1), matProject);
+	float3 end = float3(endClip.xy / endClip.w * float2(0.5, -0.5) + 0.5, endClip.z / endClip.w);
+
+	float3 delta = end - begin;
+	float3 safeDelta = delta + (delta >= 0.0 ? 1e-5 : -1e-5);
+    float3 invDelta = rcp(safeDelta);
+
+	float k = 0;
+
+	float2 crossStep = sign(delta.xy);
+	float2 crossOffset = crossStep * 0.005 * InvViewportSize;
+	crossStep = saturate(crossStep);
+
+	bool isForwardZ = (delta.z > 0.0);
+	float P22 = matProject[2][2];
+    float P32 = matProject[3][2];
+
+	[loop]
+    for (int it = 0; it < count && level >= 0 && k < 1; ++it)
+    {        
+		float3 ray = begin + k * delta;
+        if (any(abs(ray.xy - 0.5) >= 0.5)) break;
+
+        float2 levelSize = kLevelSizes[level];
+		float2 invLevelSize = kInvLevelSizes[level];
+
+		float2 linearMinMaxZ = HZBSampleDepth(ray.xy, level, levelSize);
+		float linearMinZ = linearMinMaxZ.x;
+		float linearMaxZ = linearMinMaxZ.y;
+
+		float linearZ = P32 * rcp(ray.z - P22);
+		float minZ = P22 + P32 * rcp(linearMinZ);
+
+		int2 cellId = floor(ray.xy * levelSize);
+		float t1 = k + IntersectCellBoundary(ray.xy, invDelta.xy, cellId, invLevelSize, crossStep, crossOffset);
+        float t = k;
+
+		float rayZ_t1 = begin.z + t1 * delta.z;
+    	float linearZ_t1 = P32 * rcp(rayZ_t1 - P22);
+    	float cellDepthSpan = abs(linearZ_t1 - linearZ);
+
+		float thickness = 0.8 + cellDepthSpan * thicknessMul;
+
+		if (isForwardZ)
+		{
+			float deltaZ = minZ - ray.z;
+			t = deltaZ > 0.0 ? (t + deltaZ * invDelta.z) : t;
+
+			float3 temp = begin + t * delta;
+
+			int2 newCellId = floor(temp.xy * levelSize);
+			if (any(cellId != newCellId) || (linearZ - linearMaxZ >= thickness))
+			{
+				t = t1;
+				level += 2;
+			}
+		}
+		else if (ray.z < minZ)
+		{
+			t = t1;
+			level += 2;
+		}
+		k = t;
+		--level;
+
+		level = min(maxLevel, level);
+	}
+    float3 result = begin + k * delta;
+    hitPixel = result.xy;
+
+    float2 resultNDC_XY = result.xy * float2(2.0, -2.0) + float2(-1.0, 1.0);
+    float resultLinearW = P32 * rcp(result.z - P22);
+    
+    float4 resultClip = float4(resultNDC_XY * resultLinearW, result.z * resultLinearW, resultLinearW);
+    hitPos = mul(resultClip, matProjectInverse).xyz;
+
+	return level < 0;
+}
+
+bool HZTrace(int count, float3 beginVS, float3 directionVS, float3 normalVS, float maxDistance, float3 params, out float2 hitPixel)
+{
+    float3 hitPos = 0;
+    return HZTrace(count, beginVS, directionVS, normalVS, maxDistance, params, hitPixel, hitPos);
+}

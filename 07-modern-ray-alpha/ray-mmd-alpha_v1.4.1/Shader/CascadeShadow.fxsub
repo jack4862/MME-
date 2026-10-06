@@ -1,0 +1,110 @@
+float4x4 CreateOrthographicMatrix(float left, float right, float bottom, float top, float znear, float zfar)
+{
+    float4x4 orthoMatrix;
+
+    orthoMatrix[0][0] = 2.0f / (right - left);  // Scale X
+    orthoMatrix[0][1] = 0.0f;
+    orthoMatrix[0][2] = 0.0f;
+    orthoMatrix[0][3] = 0.0f;
+
+    orthoMatrix[1][0] = 0.0f;
+    orthoMatrix[1][1] = 2.0f / (top - bottom);  // Scale Y
+    orthoMatrix[1][2] = 0.0f;
+    orthoMatrix[1][3] = 0.0f;
+
+    orthoMatrix[2][0] = 0.0f;
+    orthoMatrix[2][1] = 0.0f;
+    orthoMatrix[2][2] = 1.0f / (zfar - znear);  // Scale Z
+    orthoMatrix[2][3] = 0.0f;
+
+    orthoMatrix[3][0] = -(right + left) / (right - left);
+    orthoMatrix[3][1] = -(top + bottom) / (top - bottom);
+    orthoMatrix[3][2] = -znear / (zfar - znear);
+    orthoMatrix[3][3] = 1.0f;  // Homogeneous coordinate
+
+    return orthoMatrix;
+}
+
+float4x4 CreateLightViewMatrixWithCenter(float3 forward, float3 LightDirection, float LightDistance, float3 center)
+{
+	float3 right = cross(float3(0.0f, 0.0f, 1.0f), forward);
+
+    if (dot(right, right) < 1e-6f)
+    {
+        right = cross(float3(0.0f, 1.0f, 0.0f), forward);
+    }
+
+    right = normalize(right);
+    
+    float3 up = cross(forward, right);
+
+	float3x3 rotation = {right.x, up.x, forward.x,
+						 right.y, up.y, forward.y,
+						 right.z, up.z, forward.z };
+
+	return float4x4(rotation[0], 0,
+					rotation[1], 0,
+					rotation[2], 0,
+					mul(-(center + LightDirection * LightDistance), rotation), 1);
+}
+
+struct FrustumData {
+    float3 rtn;
+    float3 rtf;
+    float3 lbn;
+    float3 lbf;
+
+    float3 rbn;
+    float3 rbf;
+    float3 ltn;
+    float3 ltf;
+};
+
+FrustumData CreateFrustumData(float znear, float zfar, float4 frustumInfo)
+{
+    FrustumData data = (FrustumData)0;
+	
+    float3 rtn = float3(frustumInfo.xz, 1) * znear;
+	float3 rtf = float3(frustumInfo.xz, 1) * zfar;
+	float3 lbn = float3(frustumInfo.yw, 1) * znear;
+	float3 lbf = float3(frustumInfo.yw, 1) * zfar;
+
+	float3 rbn = float3(rtn.x, lbn.yz);
+	float3 rbf = float3(rtf.x, lbf.yz);
+	float3 ltn = float3(lbn.x, rtn.yz);
+	float3 ltf = float3(lbf.x, rtf.yz);
+
+    data.rtn = rtn;
+    data.rtf = rtf;
+    data.lbn = lbn;
+    data.lbf = lbf;
+    data.rbn = float3(rtn.x, lbn.yz);
+    data.rbf = float3(rtf.x, lbf.yz);
+    data.ltn = float3(lbn.x, rtn.yz);
+    data.ltf = float3(lbf.x, rtf.yz);
+
+    return data;
+}
+
+struct FrustumClipPlanes {
+    float znears[4];
+    float zfars[4];
+};
+
+FrustumClipPlanes CreateFrustumClipPlanes(float n, float f, float lambda = 0.5)
+{
+    FrustumClipPlanes planes = (FrustumClipPlanes)0;
+
+	float4 p = float4(1,2,3,4) / 4;
+	float4 p0 = n + (f - n) / n * p;
+	float4 p1 = n * pow(f / n, p);
+	float4 sp = lerp(p0, p1, lambda);
+
+    float znears[4] = {n, sp.x, sp.y, sp.z};
+    float zfars[4] = {sp.x, sp.y, sp.z, sp.w};
+
+    planes.znears = znears;
+    planes.zfars = zfars;
+
+    return planes;
+}

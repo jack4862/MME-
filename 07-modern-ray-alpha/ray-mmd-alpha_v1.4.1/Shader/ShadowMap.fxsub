@@ -1,0 +1,181 @@
+#define SHADOW_BLUR_COUNT 0
+#define SHADOW_SOFT_LEVEL 2
+
+static float4 frustumInfo = CreateFrustumFromProjInverse();
+static FrustumClipPlanes planes = CreateFrustumClipPlanes(mCascadeShadowZNear, mCascadeShadowZFar, mCascadeShadowLambda);
+
+float SampleCompare(sampler source, float2 shadowCoord, float depth)
+{
+	float s = tex2Dlod(source, float4(shadowCoord, 0, 0)).r;
+	float shadow = step(depth, s);
+	return max(shadow, step(s, 1e-5));
+}
+
+float SampleShadowmapFiltered(sampler source, float2 shadowCoord, float depth, float4 shadowmapSize)
+{
+	#if SHADOW_SOFT_LEVEL == 2
+	float fetchesWeights[9];
+    float2 fetchesUV[9];
+    SampleShadow_ComputeSamples_Tent_5x5(shadowmapSize, shadowCoord.xy, fetchesWeights, fetchesUV);
+	float attenuation = fetchesWeights[0] * SampleCompare(source, fetchesUV[0].xy, depth);
+    attenuation += fetchesWeights[1] * SampleCompare(source, fetchesUV[1].xy, depth);
+    attenuation += fetchesWeights[2] * SampleCompare(source, fetchesUV[2].xy, depth);
+    attenuation += fetchesWeights[3] * SampleCompare(source, fetchesUV[3].xy, depth);
+    attenuation += fetchesWeights[4] * SampleCompare(source, fetchesUV[4].xy, depth);
+    attenuation += fetchesWeights[5] * SampleCompare(source, fetchesUV[5].xy, depth);
+    attenuation += fetchesWeights[6] * SampleCompare(source, fetchesUV[6].xy, depth);
+    attenuation += fetchesWeights[7] * SampleCompare(source, fetchesUV[7].xy, depth);
+    attenuation += fetchesWeights[8] * SampleCompare(source, fetchesUV[8].xy, depth);
+	#elif SHADOW_SOFT_LEVEL == 1
+	float4 attenuation4;
+	float invShadowAtlasWidth = shadowmapSize.x;
+	float invShadowAtlasHeight = shadowmapSize.y;
+	float invHalfShadowAtlasWidth = 0.5f * invShadowAtlasWidth;
+    float invHalfShadowAtlasHeight = 0.5f * invShadowAtlasHeight;
+	float2 offset = float2(invHalfShadowAtlasWidth, invHalfShadowAtlasHeight);
+    attenuation4.x = SampleCompare(source, shadowCoord.xy + offset * float2(-1, -1), depth);
+    attenuation4.y = SampleCompare(source, shadowCoord.xy + offset * float2(+1, -1), depth);
+    attenuation4.z = SampleCompare(source, shadowCoord.xy + offset * float2(-1, +1), depth);
+    attenuation4.w = SampleCompare(source, shadowCoord.xy + offset * float2(+1, +1), depth);
+    float attenuation = dot(attenuation4, 0.25);
+	#else
+	float attenuation = SampleCompare(source, shadowCoord.xy, depth);
+	#endif
+
+	return attenuation;
+}
+
+float ShadingShadow(MaterialParam material, float3 viewPosition)
+{
+	float shadow = 1;
+
+	float3 positionWS = mul(float4(viewPosition, 1), matViewInverse).xyz;
+
+	int layer = -1;
+	float4x4 vmat = 0;
+	float4x4 pmat = 0;
+	[unroll]
+	for (int i = 0; i < 4; i++) {
+		float znear = planes.znears[i];
+		float zfar = planes.zfars[i];
+		FrustumData frustum = CreateFrustumData(znear, zfar, frustumInfo);
+
+		float3 nc = (frustum.rtn + frustum.lbn) / 2.0;
+		float3 fc = (frustum.rtf + frustum.lbf) / 2.0;
+
+		float3 axis = fc - nc;
+		float3 v0 = nc - frustum.rtf;
+		float3 v1 = nc - frustum.rtn;
+		float t = (dot(v0, v0) - dot(v1, v1)) / (2 * dot(axis, frustum.rtf - frustum.rtn));
+
+		float3 center = nc + t * axis;
+
+		float cz = center.z;
+
+		float radius = length(frustum.rbn - center);
+
+		center = mul(float4(center, 1), matViewInverse).xyz;
+
+		if (length2(positionWS - center) <= radius * radius) 
+		{
+			layer = i;
+			float3 lightDirectionWS = -SunDirection;
+			vmat = CreateLightViewMatrixWithCenter(SunDirection, lightDirectionWS, radius + mCascadeShadowLightDistance + mCascadeShadowLightZNear, center);
+    		pmat = CreateOrthographicMatrix(-radius, radius, -radius, radius, mCascadeShadowLightZNear, mCascadeShadowLightZNear + mCascadeShadowLightDistance + 2 * radius);
+			break;
+		}
+	}
+
+	if (layer >= 0) {
+		float3 positionVS = mul(float4(positionWS, 1), vmat).xyz;
+		float4 positionCS = mul(float4(positionVS, 1), pmat);
+
+		float depth = positionVS.z;
+		float2 ndcCoord = positionCS.xy / positionCS.w;
+		ndcCoord = PosToCoord(ndcCoord.xy);
+		ndcCoord.xy += 0.5 / float(SHADOW_MAP_SIZE);
+
+		float4 shadowmapSize = float4((1.0 / SHADOW_MAP_SIZE).xx, (SHADOW_MAP_SIZE * 1.0).xx);
+		float sam = 1;
+		if (layer == 0)
+		{
+			clip(tex2Dlod(CSMSamp, float4(ndcCoord, 0, 0)).r - 1e-5);
+			sam = SampleShadowmapFiltered(CSMSamp, ndcCoord, depth, shadowmapSize);
+		}
+		else if (layer == 1)
+		{
+			clip(tex2Dlod(CSM1Samp, float4(ndcCoord, 0, 0)).r - 1e-5);
+			sam = SampleShadowmapFiltered(CSM1Samp, ndcCoord, depth, shadowmapSize);
+		}
+		else if (layer == 2)
+		{
+			clip(tex2Dlod(CSM2Samp, float4(ndcCoord, 0, 0)).r - 1e-5);
+			sam = SampleShadowmapFiltered(CSM2Samp, ndcCoord, depth, shadowmapSize);
+		}
+		else
+		{
+			clip(tex2Dlod(CSM3Samp, float4(ndcCoord, 0, 0)).r - 1e-5);
+			sam = SampleShadowmapFiltered(CSM3Samp, ndcCoord, depth, shadowmapSize);
+		}
+		shadow = sam;
+	}
+
+	return shadow;
+}
+
+float4 ShadowMapGenPS(
+	in float2 coord : TEXCOORD0,
+	in float3 viewdir : TEXCOORD1) : COLOR
+{
+	float4 MRT5 = tex2Dlod(Gbuffer5Map, float4(coord, 0, 0));
+	float4 MRT6 = tex2Dlod(Gbuffer6Map, float4(coord, 0, 0));
+	float4 MRT7 = tex2Dlod(Gbuffer7Map, float4(coord, 0, 0));
+	float4 MRT8 = tex2Dlod(Gbuffer8Map, float4(coord, 0, 0));
+
+	MaterialParam material;
+	DecodeGbuffer(MRT5, MRT6, MRT7, MRT8, material);
+
+	clip(any(material.visibility) - 1e-5);
+
+	float3 view = normalize(viewdir);
+	float3 viewPosition = view * material.linearDepth / view.z;
+
+	return ShadingShadow(material, viewPosition);
+}
+
+#if SHADOW_BLUR_COUNT
+float4 ShadowMapBlurPS(float2 coord : TEXCOORD0, uniform sampler source, uniform float2 offset) : COLOR
+{
+	float2 offset1 = coord + offset;
+	float2 offset2 = coord - offset;
+
+	float totalWeight = 1;
+	float totalColor = tex2Dlod(source, float4(coord, 0, 0)).r;
+
+	float center_d = tex2Dlod(Gbuffer8Map, float4(coord, 0, 0)).r;
+
+	[unroll]
+	for(int r = 1; r < SHADOW_BLUR_COUNT; r++)
+	{
+		float shadow1 = tex2Dlod(source, float4(offset1, 0, 0)).r;
+		float shadow2 = tex2Dlod(source, float4(offset2, 0, 0)).r;
+
+		float depth1 = tex2Dlod(Gbuffer8Map, float4(offset1, 0, 0)).r;
+		float depth2 = tex2Dlod(Gbuffer8Map, float4(offset2, 0, 0)).r;
+
+		float bilateralWeight1 = BilateralWeight(r, depth1, center_d, SHADOW_BLUR_COUNT, 10);
+		float bilateralWeight2 = BilateralWeight(r, depth2, center_d, SHADOW_BLUR_COUNT, 10);
+
+		totalColor += shadow1 * bilateralWeight1;
+		totalColor += shadow2 * bilateralWeight2;
+
+		totalWeight += bilateralWeight1;
+		totalWeight += bilateralWeight2;
+
+		offset1 += offset;
+		offset2 -= offset;
+	}
+
+	return totalColor / totalWeight;
+}
+#endif

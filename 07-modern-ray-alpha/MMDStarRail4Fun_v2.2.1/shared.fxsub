@@ -1,0 +1,23 @@
+////  shared.fxsub
+//  MMDStarRail4Fun
+//
+//  Created by 洪梓嫣 on 2025/4/20.
+//  Copyright © 2019 Bilibili. All rights reserved.
+//
+
+// 如需要一个角色独占一个控制器和阴影贴图
+// 将整个文件夹复制一份
+// 重命名控制器"sr_controller.pmx"为不同的名称
+// 将新的控制器名称往下填
+// 并将以下阴影贴图名称也改为不同的名称
+// 确保一个工程中不要有同名的控制器和阴影贴图
+// 不要有汉字! 不要有汉字! 不要有汉字!
+
+// .fx材质使用的控制器名称
+#define CONTROLLER_NAME "sr_controller.pmx"
+
+// .fx材质和Shadow.x附件使用的阴影贴图名称
+#define SHADOW_MAP ShadowMap_20250923
+
+// 阴影贴图分辨率
+#define SHADOW_MAP_SIZE 4096

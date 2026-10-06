@@ -1,0 +1,26 @@
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+GI
+Test
+Extension/NoiseBlur
+Extension/PaniniProjection
+Extension/BokehBlur
+Extension/OpticalLight
+Extension/SSAO
+Skybox/Gradient Sky
+Fog/VolumetricFog.pmx
+Fog/VolumetricFog
+/Skybox/Alexs Apartment
+/Skybox/HDR025
+/Skybox/HDR_Free_City_Night_Lights
+/Skybox/Helipad Night
+/Skybox/Willem_Kuyperstraat
+/Shader/screenshots/logo.psd

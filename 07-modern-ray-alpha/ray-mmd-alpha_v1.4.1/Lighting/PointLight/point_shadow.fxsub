@@ -1,0 +1,141 @@
+#include "../../ray.conf"
+#include "../../ray_advanced.conf"
+#include "../../shader/math.fxsub"
+#include "../../shader/common.fxsub"
+#include "../../shader/shadowcommon.fxsub"
+
+float3 LightPosition : CONTROLOBJECT<string name="(OffscreenOwner)"; string item = "Position";>;
+
+float4x4 CreateLightViewMatrix(float3 forward, float3 up, float3 right, float3 LightPosition)
+{
+	float3x3 rotation = {right.x, up.x, forward.x,
+						 right.y, up.y, forward.y,
+						 right.z, up.z, forward.z };
+
+	return float4x4(rotation[0], 0,
+					rotation[1], 0,
+					rotation[2], 0,
+					mul(-LightPosition, rotation), 1);
+}
+
+static float4x4 matLightProject = CreatePerspectiveProject(radians(45), 1, mPointLightNear, mPointLightFar);
+static float4x4 matLightViewXP = CreateLightViewMatrix(float3(1,0,0), float3(0,1,0), float3(0,0,-1), LightPosition);
+static float4x4 matLightViewXN = CreateLightViewMatrix(float3(-1,0,0), float3(0,1,0), float3(0,0,1), LightPosition);
+static float4x4 matLightViewYP = CreateLightViewMatrix(float3(0,1,0), float3(0,0,-1), float3(1,0,0), LightPosition);
+static float4x4 matLightViewYN = CreateLightViewMatrix(float3(0,-1,0), float3(0,0,1), float3(1,0,0), LightPosition);
+static float4x4 matLightViewZP = CreateLightViewMatrix(float3(0,0,1), float3(0,1,0), float3(1,0,0), LightPosition);
+static float4x4 matLightViewZN = CreateLightViewMatrix(float3(0,0,-1), float3(0,-1,0), float3(1,0,0), LightPosition);
+
+
+texture DiffuseMap: MATERIALTEXTURE;
+sampler DiffuseMapSamp = sampler_state 
+{
+	texture = <DiffuseMap>;
+	MINFILTER = POINT; MAGFILTER = POINT; MIPFILTER = POINT;
+	ADDRESSU  = WRAP; ADDRESSV  = WRAP;
+};
+
+static float4 sts[] = {
+	float4(0.5, 1.0/3, -0.5, 2.0/3),
+	float4(0.5, 1.0/3, +0.5, 2.0/3),
+	float4(0.5, 1.0/3, -0.5, 0),
+	float4(0.5, 1.0/3, +0.5, 0),
+	float4(0.5, 1.0/3, -0.5, -2.0/3),
+	float4(0.5, 1.0/3, +0.5, -2.0/3),
+};
+
+void vert(
+	in float4 Position : POSITION, 
+	in float2 Texcoord : TEXCOORD0, 
+	out float2 oTexcoord0 : TEXCOORD0,
+	out float4 oTexcoord1 : TEXCOORD1,
+	out float4 oTexcoord2 : TEXCOORD2,
+	out float4 oPosition  : POSITION,
+	uniform int face
+)
+{
+	static float4x4 viewMatrices[] = {
+		matLightViewXP,
+		matLightViewXN,
+		matLightViewYP,
+		matLightViewYN,
+		matLightViewZP,
+		matLightViewZN
+	};
+
+	float4 st = sts[face];
+
+	oTexcoord0 = Texcoord;
+	float3 positionWS = mul(Position, matWorld).xyz;
+	float3 positionVS = mul(float4(positionWS, 1), viewMatrices[face]).xyz;
+	float4 positionCS = mul(float4(positionVS, 1), matLightProject);
+	float3 positionNDC = positionCS.xyz / positionCS.w;
+	positionNDC.xy = positionNDC.xy * st.xy + st.zw;
+	positionCS.xy = positionNDC.xy * positionCS.w;
+	oTexcoord1 = float4(positionVS, 1);
+	oTexcoord2 = oPosition = positionCS;
+}
+
+float4 frag(
+	in float2 coord : TEXCOORD0,
+	in float3 view : TEXCOORD1,
+	in float4 proj : TEXCOORD2,
+	uniform int face
+) : COLOR
+{
+	float4 st = sts[face];
+
+	float3 positionNDC = proj.xyz / proj.w;
+	positionNDC.xy = (positionNDC - st.zw) / st.xy;
+	clip(all(abs(positionNDC.xy + float2(1e-4, -1e-4)) < 1) - 0.5);
+
+#if CASTER_ALPHA_ENABLE
+	clip(!opadd - 0.001f);
+	float alpha = MaterialDiffuse.a;
+#if CASTER_ALPHA_MAP_ENABLE
+	if (use_texture) alpha *= tex2D(DiffuseMapSamp, coord).a;
+#endif
+	clip(alpha - CasterAlphaThreshold);
+#endif
+
+	return ComputeMoments(proj.z / proj.w).xyxy;
+}
+
+technique DepthTecSS<string MMDPass = "object_ss";
+> {
+	pass DrawObjectXP {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(0);
+		PixelShader  = compile ps_3_0 frag(0);
+	}
+	pass DrawObjectXN {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(1);
+		PixelShader  = compile ps_3_0 frag(1);
+	}
+	pass DrawObjectYP {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(2);
+		PixelShader  = compile ps_3_0 frag(2);
+	}
+	pass DrawObjectYN {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(3);
+		PixelShader  = compile ps_3_0 frag(3);
+	}
+	pass DrawObjectZP {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(4);
+		PixelShader  = compile ps_3_0 frag(4);
+	}
+	pass DrawObjectZN {
+		AlphaBlendEnable = false; AlphaTestEnable = false;
+		VertexShader = compile vs_3_0 vert(5);
+		PixelShader  = compile ps_3_0 frag(5);
+	}
+}
+
+technique DepthTec0<string MMDPass = "object";>{}
+technique EdgeTec<string MMDPass = "edge";>{}
+technique ShadowTec<string MMDPass = "shadow";>{}
+technique ZplotTec<string MMDPass = "zplot";>{}

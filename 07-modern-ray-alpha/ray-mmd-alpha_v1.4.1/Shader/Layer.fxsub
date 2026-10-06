@@ -1,0 +1,17 @@
+float CalculateLayer(sampler source, float2 coord, float2x4 layers)
+{
+    float layer = floor(tex2Dlod(source, float4(coord, 0, 0)).r * 255.0 + 0.5);
+
+    const float4 scale0 = float4(1.0, 0.5, 0.25, 0.125);
+    const float4 scale1 = float4(0.0625, 0.03125, 0.015625, 0.0078125);
+
+    float4 bit0 = step(0.25, frac(floor(layer * scale0) * 0.5));
+    float4 bit1 = step(0.25, frac(floor(layer * scale1) * 0.5));
+
+    float4 m0 = bit0 * (1.0 - layers[0]);
+    float4 m1 = bit1 * (1.0 - layers[1]);
+
+    float4 m = max(m0, m1);
+    float2 m2 = max(m.xy, m.zw);
+    return max(m2.x, m2.y);
+}

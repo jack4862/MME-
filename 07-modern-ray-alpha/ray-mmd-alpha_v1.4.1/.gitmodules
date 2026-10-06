@@ -1,0 +1,24 @@
+[submodule "Extension/LightBloom"]
+	path = Extension/LightBloom
+	url = https://github.com/MikuMikuShaders/LightBloom.git
+[submodule "Extension/FXAA"]
+	path = Extension/FXAA
+	url = https://github.com/MikuMikuShaders/FXAA.git
+[submodule "Extension/SMAA"]
+	path = Extension/SMAA
+	url = https://github.com/MikuMikuShaders/SMAA.git
+[submodule "Extension/StereoImage"]
+	path = Extension/StereoImage
+	url = https://github.com/MikuMikuShaders/StereoImage.git
+[submodule "Extension/OpticalFlares"]
+	path = Extension/OpticalFlares
+	url = https://github.com/MikuMikuShaders/OpticalFlares.git
+[submodule "Extension/ColorGrading"]
+	path = Extension/ColorGrading
+	url = https://github.com/MikuMikuShaders/ColorGrading.git
+[submodule "Extension/FilmGrain"]
+	path = Extension/FilmGrain
+	url = https://github.com/MikuMikuShaders/FilmGrain.git
+[submodule "Extension/Spectrum"]
+	path = Extension/Spectrum
+	url = https://github.com/MikuMikuShaders/Spectrum.git

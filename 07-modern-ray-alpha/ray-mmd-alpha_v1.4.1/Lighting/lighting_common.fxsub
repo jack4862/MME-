@@ -1,0 +1,20 @@
+float mLayer0FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer0-";>;
+float mLayer1FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer1-";>;
+float mLayer2FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer2-";>;
+float mLayer3FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer3-";>;
+float mLayer4FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer4-";>;
+float mLayer5FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer5-";>;
+float mLayer6FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer6-";>;
+float mLayer7FadeM : CONTROLOBJECT<string name="(self)"; string item = "Layer7-";>;
+
+static float2x4 mLayers = {
+	mLayer0FadeM, mLayer1FadeM, mLayer2FadeM, mLayer3FadeM,
+	mLayer4FadeM, mLayer5FadeM, mLayer6FadeM, mLayer7FadeM
+};
+
+shared texture LayerMap: OFFSCREENRENDERTARGET;
+sampler LayerSamp = sampler_state {
+	texture = <LayerMap>;
+	MinFilter = NONE; MagFilter = NONE; MipFilter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};

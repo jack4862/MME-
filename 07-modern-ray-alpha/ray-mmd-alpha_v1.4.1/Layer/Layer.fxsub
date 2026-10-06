@@ -1,0 +1,92 @@
+float4x4 WorldViewProjMatrix      : WORLDVIEWPROJECTION;
+
+float4 MaterialDiffuse  : DIFFUSE<string Object = "Geometry";>;
+
+uniform bool use_texture;
+
+texture DiffuseMap: MATERIALTEXTURE;
+sampler DiffuseMapSamp = sampler_state {
+	texture = <DiffuseMap>;
+	MinFilter = POINT; MagFilter = POINT; MipFilter = POINT;
+	ADDRESSU = WRAP; ADDRESSV = WRAP;
+};
+
+struct Attributes {
+    float4 positionOS : POSITION;
+    float2 texcoord : TEXCOORD0;
+};
+
+struct Varyings {
+    float4 positionCS : POSITION;
+    float2 texcoord : TEXCOORD0;
+};
+
+Varyings vert(Attributes input)
+{
+    Varyings output = (Varyings)0;
+    output.positionCS = mul(input.positionOS, WorldViewProjMatrix);
+    output.texcoord = input.texcoord;
+    return output;
+}
+
+float4 frag(Varyings input) : COLOR
+{
+    float alpha = MaterialDiffuse.a;
+    if (use_texture) alpha *= tex2D(DiffuseMapSamp, input.texcoord.xy).a;
+    clip(alpha - AlphaThreshold);
+
+    int layer = 0;
+    #if LAYER_0
+    layer += 1;
+    #endif
+    #if LAYER_1
+    layer += 2;
+    #endif
+    #if LAYER_2
+    layer += 4;
+    #endif
+    #if LAYER_3
+    layer += 8;
+    #endif
+    #if LAYER_4
+    layer += 16;
+    #endif
+    #if LAYER_5
+    layer += 32;
+    #endif
+    #if LAYER_6
+    layer += 64;
+    #endif
+    #if LAYER_7
+    layer += 128;
+    #endif
+    float f = layer / 255.0;
+    return float4(f,f,f,f);
+}
+
+technique ObjectTec < string MMDPass = "object";
+    string Script = "RenderColorTarget0=;"
+                    "Pass=DrawObject;";
+> {
+    pass DrawObject {
+        AlphaBlendEnable = false;
+        AlphaTestEnable = false;
+        VertexShader = compile vs_3_0 vert();
+        PixelShader  = compile ps_3_0 frag();
+    }
+}
+
+technique ObjectTecBS  < string MMDPass = "object_ss";
+    string Script = "RenderColorTarget0=;"
+                    "Pass=DrawObject;";
+> {
+    pass DrawObject {
+        AlphaBlendEnable = false;
+        AlphaTestEnable = false;
+        VertexShader = compile vs_3_0 vert();
+        PixelShader  = compile ps_3_0 frag();
+    }
+}
+technique EdgeTec < string MMDPass = "edge"; > { }
+technique ShadowTech < string MMDPass = "shadow";  > { }
+technique ZplotTec < string MMDPass = "zplot"; > { }
