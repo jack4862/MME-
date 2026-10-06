@@ -1,0 +1,103 @@
+texture2D Curve0Tex : TEXTURE <
+	string ResourceName = "curve0.png";
+>;
+sampler2D sampCurve0 = sampler_state {
+	texture = <Curve0Tex>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+};
+texture2D Curve1Tex : TEXTURE <
+	string ResourceName = "curve1.png";
+>;
+sampler2D sampCurve1 = sampler_state {
+	texture = <Curve1Tex>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+};
+texture2D Curve2Tex : TEXTURE <
+	string ResourceName = "curve2.png";
+>;
+sampler2D sampCurve2 = sampler_state {
+	texture = <Curve2Tex>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+};
+texture2D MaskTex : TEXTURE <
+	string ResourceName = MASKTEX;
+>;
+sampler2D sampMask = sampler_state {
+	texture = <MaskTex>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+};
+texture2D NoizeTex : TEXTURE <
+	string ResourceName = "noize.png";
+>;
+sampler2D sampNoize = sampler_state {
+	texture = <NoizeTex>;
+	AddressU = CLAMP;
+	AddressV = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = NONE;
+};
+float SoftLight(float a,float b)
+{
+	float c;
+	
+	if (b < 0.5) c = pow(a,(1.0 - b) / 0.5);
+	else c = pow(a,0.5 / b);
+	
+	
+	return c;
+}
+float OverRay(float a,float b)
+{
+	float c;
+	if (a < 0.5) c = a * b * 2;
+	else c = 2 * (a + b - a * b) - 1;
+
+	if (c > 1) c = 1;
+	return c;
+}
+float Screen(float a,float b)
+{
+	float c = 1-((1-a)*(1-b));
+	return c;
+}
+float3 ToneCurve0(float3 col)
+{
+	col.r = tex2D(sampCurve0,col.r).r;
+	col.g = tex2D(sampCurve0,col.g).r;
+	col.b = tex2D(sampCurve0,col.b).r;
+
+	return col;
+}
+float3 ToneCurve1(float3 col)
+{
+	col.r = tex2D(sampCurve1,col.r).r;
+	col.g = tex2D(sampCurve1,col.g).r;
+	col.b = tex2D(sampCurve1,col.b).r;
+
+	return col;
+}
+float3 ToneCurve2(float3 col)
+{
+	col.r = tex2D(sampCurve2,col.r).r;
+	col.g = tex2D(sampCurve2,col.g).r;
+	col.b = tex2D(sampCurve2,col.b).r;
+
+	return col;
+}

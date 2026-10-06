@@ -1,0 +1,90 @@
+﻿════════════════════════════════════════════════════════════
+                        借 物 表
+                  （使用素材リスト / Credit List）
+════════════════════════════════════════════════════════════
+
+■ 使用软件
+・MikuMikuDance（MMD）
+・MikuMikuEffect（MME）
+
+────────────────────────────────────────────────────────────
+
+【模型】
+※请自行填写本作品中使用的模型及其作者
+（例：○○模型：△△P 様）
+
+────────────────────────────────────────────────────────────
+
+【动作 / 舞蹈】
+※请自行填写本作品中使用的动作数据及其作者
+
+────────────────────────────────────────────────────────────
+
+【场景 / 舞台】
+※请自行填写本作品中使用的场景、舞台及其作者
+
+────────────────────────────────────────────────────────────
+
+【音乐 / 音声】
+※请自行填写本作品中使用的音乐、音频及其作者
+
+────────────────────────────────────────────────────────────
+
+【渲染环境 / 特效】
+（以下素材取自「渲染」文件夹，均已确认作者与版本）
+
+1. Ray-MMD 1.5.2（物理渲染引擎，ray.x）
+   作者：Rui（ray-cast）
+   下载：github.com/ray-cast/ray-mmd
+   附带：ray_controller.pmx 控制器
+         ray_controller.vmd / DirectionalLight.vmd / Sky with box.vmd
+         / water.vmd / 照明.vmd（控制器动作数据）
+   许可：MIT License
+
+2. AutoLuminous Ver.4.2（自发光特效，AutoLuminous.x）
+   作者：そぼろ（soboro）
+
+3. KiraKira キラキラエフェクト v2（闪烁发光特效，KiraKira.x）
+   作者：ビームマンP（ロベリア）
+   改変元：TexSnowLite.fx（そぼろ氏）
+   附带：Controller_0.pmd（控制器）、控制器数据.vmd
+   ※注意：该特效以与 CrossLuminous 并用为前提，请另行搭配使用
+
+4. LightBloom（泛光特效，LightBloom.x / LightBloom with DirtMap.x）
+   作者：Rui（MikuMikuShaders）
+   附带：LightBloomController.pmx、LightBloomController.vmd
+   许可：MIT License
+
+5. FXAA（快速抗锯齿特效，FXAA.x）
+   作者：Rui（MikuMikuShaders）
+   原理：NVIDIA FXAA 白皮书（Timothy Lottes）
+   许可：MIT License
+
+6. SvSSAO Ver.0.1（屏幕空间环境光遮蔽，SvSSAO.x）
+   作者：そぼろ（soboro）
+   原型：mqdl 氏 SSAO → otamon（おたもん）氏改変版 o_SSAO
+
+7. ikBokeh v0.18c（景深 / 焦外虚化特效，ikBokeh.x）
+   作者：ikeno（@ikeno_mmd）
+   附带：ikBokehController.pmx、ikBokehController.vmd
+
+8. PostAdultShaderS2 v0.13（后期光泽 / 渲染特效）
+   作者：針金P（hariganeP）
+   包含：PostAdultShader.x / PostAdultShaderS2.x
+
+9. PostMovie改変（后期电影风格特效，含無彩色 / 緑系 / 赤系 / 青系 / 黄系 多版本）
+   原作者：ビームマンP
+   改変制作：もこたろ（@mfmf_s24_，2017/09/09 配布）
+
+────────────────────────────────────────────────────────────
+
+【其他说明】
+・「渲染说明」文件夹（MME栏 / 附件操作）为本地使用教程截图，
+  不属于外部借物，无需列入借物表。
+・各特效自带之控制器模型（.pmx / .pmd）与控制器动作（.vmd），
+  均为对应作者发布时附带，借物表已随特效一并注明。
+・使用前请逐一确认各作者的使用规约：
+  二次配布、改変、商用、使用报告等要求各作者不尽相同
+  （如 PostMovie改変 禁止二次配布与自作發言）。
+
+════════════════════════════════════════════════════════════
