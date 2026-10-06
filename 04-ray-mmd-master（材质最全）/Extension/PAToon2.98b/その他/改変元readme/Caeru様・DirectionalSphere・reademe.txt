@@ -1,0 +1,15 @@
+
+スフィアマップに方向を持たせるやつのサンプル
+舞力介入PさんのFull.fxを改造
+
+◆使い方
+・髪に適用して納得したら他のシェーダーに移植する
+
+
+◆利用条件
+　改造とか再配布とか自由ですが まぁ自己責任で！
+
+作った人 : Caeru
+Twitter  : https://twitter.com/Caeru_Odin
+Caeruのエフェクト静画クリップ http://seiga.nicovideo.jp/clip/1039062
+

@@ -1,0 +1,540 @@
+//=============================================================================
+// 
+//=============================================================================
+
+#define	PI	(3.14159265359)
+
+#define	DEG2RAD		(PI / 180.0)
+#define	RAD2DEG		(180.0 / PI)
+
+
+float2 ViewportSize : VIEWPORTPIXELSIZE;
+static float2 ViewportOffset = (float2(0.5,0.5)/ViewportSize.xy);
+
+/*
+// エディタ時間に同期させるか? 0:同期しない、1:同期する
+#define TimeSync		0
+
+float time1 : TIME;
+float time2 : TIME < bool SyncInEditMode = true; >;
+static float time = TimeSync ? time2 : time1;
+float elapsed_time1 : ELAPSEDTIME;
+float elapsed_time2 : ELAPSEDTIME < bool SyncInEditMode = true; >;
+static float Dt = clamp(TimeSync ? elapsed_time2 : elapsed_time1, 0.0f, 0.1f);
+*/
+
+float Script : STANDARDSGLOBAL <
+	string ScriptOutput = "color";
+	string ScriptClass = "scene";
+	string ScriptOrder = "postprocess";
+> = 0.8;
+
+texture2D ScnMap : RENDERCOLORTARGET <
+	float2 ViewPortRatio = {1.0,1.0};
+	int MipLevels = 1;
+	string Format = TEX_FORMAT;
+>;
+sampler ScnSamp = sampler_state {
+	texture = <ScnMap>;
+	MinFilter = LINEAR; MagFilter = LINEAR; MipFilter = NONE;
+	AddressU  = CLAMP; AddressV = CLAMP;
+};
+sampler ScnSampBorder = sampler_state {
+	texture = <ScnMap>;
+	MinFilter = LINEAR; MagFilter = LINEAR; MipFilter = NONE;
+	AddressU = BORDER; AddressV = BORDER; BorderColor = float4(0,0,0,0);
+};
+texture2D DepthBuffer : RENDERDEPTHSTENCILTARGET <
+	float2 ViewPortRatio = {1.0,1.0};
+	string Format = "D24S8";
+>;
+
+
+float AcsTr  : CONTROLOBJECT < string name = "(self)"; string item = "Tr"; >;
+float AcsSi  : CONTROLOBJECT < string name = "(self)"; string item = "Si"; >;
+float3 AcsXyzOrig : CONTROLOBJECT < string name = "(self)"; >;
+float3 AcsRotOrig  : CONTROLOBJECT < string name = "(self)"; string item = "Rxyz"; >;
+
+static float3 AcsXyz = AcsXyzOrig + 1.0;
+static float3 AcsRot = AcsRotOrig * RAD2DEG + 1.0;
+
+
+#define SQRT2	1.4142
+const float gamma = 2.2;
+const float epsilon = 1.0e-6;
+float3 Degamma(float3 col) { return pow(max(col,epsilon), gamma); }
+float3 Gamma(float3 col) { return pow(max(col,epsilon), 1.0/gamma); }
+float4 Degamma4(float4 col) { return float4(Degamma(col.rgb), col.a); }
+float4 Gamma4(float4 col) { return float4(Gamma(col.rgb), col.a); }
+
+float Luminance(float3 rgb)
+{
+//	return dot(float3(0.2126, 0.7152, 0.0722), max(rgb,0));
+	return dot(float3(0.299, 0.587, 0.114), max(rgb,0));
+}
+
+float Brightness(float3 rgb)
+{
+	return max(max(rgb.r, rgb.g), rgb.b);
+}
+
+#define DECL_TEXTURE( _map, _samp, _size) \
+	texture2D _map : RENDERCOLORTARGET < \
+		int MipLevels = 1; \
+		float2 ViewportRatio = {1.0/(_size), 1.0/(_size)}; \
+		string Format = TEX_FORMAT; \
+	>; \
+	sampler _samp = sampler_state { \
+		texture = <_map>; \
+		MinFilter = LINEAR; MagFilter = LINEAR; MipFilter = NONE; \
+		AddressU  = CLAMP; AddressV = CLAMP; \
+	};
+
+#if ENABLE_BLOOM > 0
+DECL_TEXTURE( BrightMap, BrightSamp, 2)
+DECL_TEXTURE( BlurMap1X, BlurSamp1X, 4)
+DECL_TEXTURE( BlurMap1Y, BlurSamp1Y, 4)
+DECL_TEXTURE( BlurMap2X, BlurSamp2X, 8)
+DECL_TEXTURE( BlurMap2Y, BlurSamp2Y, 8)
+DECL_TEXTURE( BlurMap3X, BlurSamp3X, 16)
+DECL_TEXTURE( BlurMap3Y, BlurSamp3Y, 16)
+DECL_TEXTURE( BlurMap4X, BlurSamp4X, 32)
+DECL_TEXTURE( BlurMap4Y, BlurSamp4Y, 32)
+DECL_TEXTURE( BlurMap5X, BlurSamp5X, 64)
+DECL_TEXTURE( BlurMap5Y, BlurSamp5Y, 64)
+#endif
+
+#if ENABLE_SOFTFOCUS > 0
+DECL_TEXTURE( SoftfocusMapX, SoftfocusSampX, 2)
+DECL_TEXTURE( SoftfocusMapY, SoftfocusSampY, 2)
+DECL_TEXTURE( SoftfocusMap2X, SoftfocusSamp2X, 4)
+DECL_TEXTURE( SoftfocusMap2Y, SoftfocusSamp2Y, 4)
+#endif
+
+#if ENABLE_EDGEBLUR > 0
+DECL_TEXTURE( EdgeMapX, EdgeSampX, 2)
+DECL_TEXTURE( EdgeMapY, EdgeSampY, 2)
+#endif
+
+
+
+// ぼかし処理の重み係数：
+float4 BlurWeightArray[] = {
+	float4(0.1167251335, 0.1121482756, 0.0994665976, 0.0814363623),
+	float4(0.0615482786, 0.0429407769, 0.0276554243, 0.016441718),
+};
+
+static float BlurWeight[8] = (float[8])BlurWeightArray;
+
+
+
+//=============================================================================
+
+struct VS_OUTPUT {
+	float4 Pos : POSITION;
+	float4 Tex : TEXCOORD0;
+	float4 BloomParam : TEXCOORD1;
+};
+
+
+//-----------------------------------------------------------------------------
+//
+
+VS_OUTPUT VS_DrawBuffer(float4 Pos: POSITION, float2 Tex: TEXCOORD)
+{
+	VS_OUTPUT Out = (VS_OUTPUT)0;
+	Out.Pos = Pos;
+	Out.Tex.xy = Tex + ViewportOffset;
+	Out.Tex.zw = 1.0 / ViewportSize;
+
+	return Out;
+}
+
+
+float4 GetScreenColor(float4 Tex)
+{
+	float2 uv = Tex.xy;
+	float2 offset = Tex.zw;
+	float4 center = tex2D(ScnSamp, uv);
+
+#if ENABLE_AA > 0
+/*============================================================================
+NVIDIA FXAA 3.11 by TIMOTHY LOTTES
+COPYRIGHT (C) 2010, 2011 NVIDIA CORPORATION. ALL RIGHTS RESERVED.
+============================================================================*/
+/* NOTE: 
+自作コードに対して .pdfを参照してfxaa風に改変してから、
+ソースを参照したため、オリジナルとは変数名などが違う。
+最適化のため？のコード順序にも従わず、ナイーブな順序になっている。
+*/
+
+	const float fxaaConsoleEdgeThreshold = 0.125;		// 0.125: softer, 0.25: sharper
+	const float fxaaConsoleEdgeThresholdMin = 0.04;		// 0.04～0.08
+	const float fxaaConsoleEdgeSharpness = 2.0;			// 2.0～8.0
+
+	float4 uv2 = uv.xyxy + (float4(-1,-1, 1,1) * 0.5) * offset.xyxy;
+	float lumaLU = Luminance(tex2D( ScnSamp, uv2.xy).rgb);
+	float lumaRU = Luminance(tex2D( ScnSamp, uv2.zy).rgb);
+	float lumaLD = Luminance(tex2D( ScnSamp, uv2.xw).rgb);
+	float lumaRD = Luminance(tex2D( ScnSamp, uv2.zw).rgb);
+	float lumaC = Luminance(center.rgb);
+
+	float maxLuma = max(max(lumaLU, lumaLD), max(lumaRU, lumaRD));
+	float minLuma = min(min(lumaLU, lumaLD), min(lumaRU, lumaRD));
+	float maxLumaC = max(lumaC, maxLuma);
+	float minLumaC = min(lumaC, minLuma);
+
+	float threshold = max(maxLuma * fxaaConsoleEdgeThreshold, fxaaConsoleEdgeThresholdMin);
+	float w = saturate((maxLumaC - minLumaC) / threshold - 0.05);
+	w *= w;
+
+	lumaRU += 1.0 / 1024.0;
+
+	float2 dir0 = float2(lumaLD - lumaRU, lumaRD - lumaLU);
+	float2 dir1 = normalize(dir0.xx + float2(dir0.y, -dir0.y));
+	float3 rgb1p = tex2D(ScnSamp, uv + dir1 * offset).rgb;
+	float3 rgb1n = tex2D(ScnSamp, uv - dir1 * offset).rgb;
+
+	float dirScale = min(abs(dir1.x), abs(dir1.y)) * fxaaConsoleEdgeSharpness;
+	float2 dir2 = clamp(dir1 / dirScale, -2.0, 2.0);
+	float3 rgb2p = tex2D(ScnSamp, uv + dir2 * offset).rgb;
+	float3 rgb2n = tex2D(ScnSamp, uv - dir2 * offset).rgb;
+
+	float3 rgbA = rgb1p + rgb1n;
+	float3 rgbB = (rgbA + rgb2p + rgb2n) * 0.25;
+	float lumaB = Luminance(rgbB);
+	rgbB = ((minLuma <= lumaB) * (lumaB <= maxLuma)) ? rgbB : (rgbA * 0.5);
+	// rgbB = float3(1,0,0);
+
+	float3 col = lerp(center.rgb, rgbB, w * AA_Intensity);
+
+/*============================================================================*/
+#else
+
+	float3 col = center.rgb;
+
+#endif
+
+	return float4(col, 1);
+}
+
+float4 PS_DrawBuffer( float4 Tex : TEXCOORD0) : COLOR0
+{
+	float4 col = Degamma4(GetScreenColor(Tex));
+	float3 origColor = col.rgb;
+
+	#if ENABLE_SOFTFOCUS > 0
+	float3 soft = tex2D(SoftfocusSampY, Tex.xy).rgb + tex2D(SoftfocusSamp2Y, Tex.xy).rgb;
+	soft *= 0.5;
+	#if USE_MULTIPLIED > 0
+	soft = sqrt(soft);
+	#endif
+	soft = max(col.rgb, soft);
+	col.rgb = lerp(col.rgb, soft, SoftfocusIntensity);
+	#endif
+
+	#if ENABLE_BLOOM > 0
+	float2 s = Tex.zw * 0.25;
+	float3 bloom00 = tex2D(BlurSamp1X, Tex.xy + float2(-1,-1) * s).rgb;
+	float3 bloom10 = tex2D(BlurSamp1X, Tex.xy + float2( 1,-1) * s).rgb;
+	float3 bloom01 = tex2D(BlurSamp1X, Tex.xy + float2(-1, 1) * s).rgb;
+	float3 bloom11 = tex2D(BlurSamp1X, Tex.xy + float2( 1, 1) * s).rgb;
+	float3 bloom = (bloom00 + bloom10 + bloom01 + bloom11) * 0.25;
+	col.rgb += bloom;
+	#endif
+
+	col.rgb = max(col.rgb, origColor);
+
+	// 色調補正
+	col.rgb = (col.rgb - origColor) * AcsXyz + origColor;
+
+	#if ENABLE_EDGEBLUR > 0
+	col.rgb = col.rgb * tex2D(EdgeSampY, Tex.xy).rgb;
+	#endif
+
+	col.rgb = lerp(origColor, col.rgb, AcsTr);
+	col.rgb = Gamma(col.rgb);
+
+	return col;
+}
+
+
+//-----------------------------------------------------------------------------
+// Bloom
+
+VS_OUTPUT VS_DrawBright(float4 Pos: POSITION, float2 Tex: TEXCOORD)
+{
+	VS_OUTPUT Out = (VS_OUTPUT)0;
+	Out.Pos = Pos;
+
+	float2 pixsize = floor(ViewportSize / 2.0);
+	float2 uv = Tex + 0.5 / pixsize;
+	float2 offset = 1.0 / pixsize;
+	Out.Tex.xy = uv.xy;
+	Out.Tex.zw = offset;
+
+	return Out;
+}
+
+float3 CalcBrightColor(float3 col)
+{
+	const float k1 = 3.0; // toe slope
+
+	col.rgb = (col.rgb - BloomThreshold);
+	// しきい値以下も少し残す
+	float3 toe = saturate(col.rgb * k1 + 1.0);
+	col.rgb = lerp(toe * toe, col.rgb + 1.0, toe);
+
+	return col;
+}
+
+float4 PS_DrawBright( float4 Tex: TEXCOORD0) : COLOR
+{
+	#define GetBloomColor(uv) \
+		CalcBrightColor(Degamma(tex2D(ScnSampBorder, uv).rgb))
+
+	float3 col = GetBloomColor(Tex.xy) * 0.5;
+
+	#if ENABLE_LENSFLARE > 0
+	float2 center = Tex.xy - 0.5;
+	float2 aspect = float2(ViewportSize.y/ViewportSize.x, 1);
+	center /= aspect;
+	center = center * length(center);
+	center *= aspect;
+	float3 lensflare = 0;
+	lensflare += GetBloomColor(-center * 2.0 + 0.5) * GHOST_CLOR1;
+	lensflare += GetBloomColor(-center * 0.75 + 0.5) * GHOST_CLOR2;
+	col += lensflare * 0.05;
+	#endif
+
+	return float4(col.rgb, 1);
+}
+
+float4 PS_SoftfocusPrepare( float4 Tex: TEXCOORD0, uniform sampler smp) : COLOR
+{
+	float2 uv = Tex.xy;
+	float3 col = Degamma(tex2D( smp, uv).rgb);
+
+	#if USE_MULTIPLIED > 0
+	// 乗算した結果を使う
+	col = col * col;
+	// colSq = col * col;
+	// col' = sqrt(colSq);
+	#endif
+
+	return float4(col, 1);
+}
+
+float4 PS_EdgeDetect( float4 Tex: TEXCOORD0, uniform sampler smp) : COLOR
+{
+	float2 uv = Tex.xy;
+	float2 offset = Tex.zw;
+	float3 col = tex2D( smp, uv).rgb;
+	float lumaC = Luminance(col);
+
+	float4 uv2 = uv.xyxy + (float4(-1,-1, 1,1) * 1.0) * offset.xyxy;
+	float lumaLU = Luminance(tex2D( ScnSamp, uv2.xy).rgb);
+	float lumaRU = Luminance(tex2D( ScnSamp, uv2.zy).rgb);
+	float lumaLD = Luminance(tex2D( ScnSamp, uv2.xw).rgb);
+	float lumaRD = Luminance(tex2D( ScnSamp, uv2.zw).rgb);
+
+	float maxLuma = max(max(lumaLU, lumaLD), max(lumaRU, lumaRD));
+	float minLuma = min(min(lumaLU, lumaLD), min(lumaRU, lumaRD));
+	float edge = saturate(((maxLuma - lumaC) + (lumaC - minLuma)) * 2.0);
+
+	// ここで色味を付ける?
+	col = lerp(col, AcsRot * 0.5 + 0.5, abs(AcsRot - 1.0));
+
+	col = lerp(1, saturate(col), edge);
+	col = Degamma(col);
+
+	return float4(col, 1);
+}
+
+
+VS_OUTPUT VS_Blur(float4 Pos: POSITION, float2 Tex: TEXCOORD,
+	uniform float level, uniform bool isXBlur)
+{
+	VS_OUTPUT Out = (VS_OUTPUT)0;
+	Out.Pos = Pos;
+
+	float2 pixsize = floor(ViewportSize / level);
+	Out.Tex.xy = Tex + 0.5 / pixsize;
+	Out.Tex.zw = (isXBlur ? float2(1, 0) : float2(0, 1)) / pixsize;
+
+	Out.BloomParam.x = (1/4.0) * max(BloomIntensity * AcsSi * 0.1, 0);
+
+	return Out;
+}
+
+float4 PS_Blur( float4 Tex: TEXCOORD0, uniform sampler smp) : COLOR
+{
+	float2 uv = Tex.xy;
+	float2 offset = Tex.zw;
+	float3 sum = tex2D( smp, uv).rgb * BlurWeight[0];
+	[unroll] for(int i = 1; i < 8; i ++) {
+		float t = i;
+		sum.rgb += tex2D(smp, uv + offset * t).rgb * BlurWeight[i];
+		sum.rgb += tex2D(smp, uv - offset * t).rgb * BlurWeight[i];
+	}
+	return float4(sum, 1);
+}
+
+#if ENABLE_BLOOM > 0
+float4 PS_BlurMix( float4 Tex: TEXCOORD0, float4 BloomParam : TEXCOORD1) : COLOR
+{
+	float2 uv = Tex.xy;
+
+	float3 sum1 = tex2D(BlurSamp1Y, uv).rgb;
+	float3 sum2 = tex2D(BlurSamp2Y, uv).rgb;
+	float3 sum3 = tex2D(BlurSamp3Y, uv).rgb;
+	float3 sum4 = tex2D(BlurSamp4Y, uv).rgb;
+	float3 sum5 = tex2D(BlurSamp5Y, uv).rgb;
+	float3 sum = (sum1 + sum2 + sum3 + sum4 + sum5) * BloomParam.x;
+
+	return float4(sum, 1);
+}
+#endif
+
+
+//=============================================================================
+
+technique LinearEnd <
+	string Script = 
+		"ClearSetColor=ClearColor;"
+		"ClearSetDepth=ClearDepth;"
+		"RenderColorTarget0=ScnMap;"
+		"RenderDepthStencilTarget=DepthBuffer;"
+		"Clear=Color; Clear=Depth;"
+		"ScriptExternal=Color;"
+
+		#if ENABLE_BLOOM > 0
+		"RenderDepthStencilTarget=DepthBuffer;"
+		"RenderColorTarget0=BrightMap;		Pass=DrawBrightPass;"
+		"RenderColorTarget0=BlurMap1X;		Pass=BlurX1Pass;"
+		"RenderColorTarget0=BlurMap1Y;		Pass=BlurY1Pass;"
+		"RenderColorTarget0=BlurMap2X;		Pass=BlurX2Pass;"
+		"RenderColorTarget0=BlurMap2Y;		Pass=BlurY2Pass;"
+		"RenderColorTarget0=BlurMap3X;		Pass=BlurX3Pass;"
+		"RenderColorTarget0=BlurMap3Y;		Pass=BlurY3Pass;"
+		"RenderColorTarget0=BlurMap4X;		Pass=BlurX4Pass;"
+		"RenderColorTarget0=BlurMap4Y;		Pass=BlurY4Pass;"
+		"RenderColorTarget0=BlurMap5X;		Pass=BlurX5Pass;"
+		"RenderColorTarget0=BlurMap5Y;		Pass=BlurY5Pass;"
+		"RenderColorTarget0=BlurMap1X;		Pass=BlurMixPass;"
+		#endif
+
+		#if ENABLE_SOFTFOCUS > 0
+		"RenderColorTarget0=SoftfocusMapY;	Pass=SoftfocusPreparePass;"
+		"RenderColorTarget0=SoftfocusMapX;	Pass=SoftfocusBlurXPass;"
+		"RenderColorTarget0=SoftfocusMapY;	Pass=SoftfocusBlurYPass;"
+		"RenderColorTarget0=SoftfocusMap2X;	Pass=SoftfocusBlurX2Pass;"
+		"RenderColorTarget0=SoftfocusMap2Y;	Pass=SoftfocusBlurY2Pass;"
+		#endif
+
+		#if ENABLE_EDGEBLUR > 0
+		"RenderColorTarget0=EdgeMapY;	Pass=EdgeDetectPass;"
+		"RenderColorTarget0=EdgeMapX;	Pass=EdgeBlurXPass;"
+		"RenderColorTarget0=EdgeMapY;	Pass=EdgeBlurYPass;"
+		#endif
+
+		"RenderColorTarget0=;"
+		"RenderDepthStencilTarget=;"
+		"Pass=DrawBuffer;";
+>{
+	#if ENABLE_BLOOM > 0
+	pass DrawBrightPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_DrawBright();
+		PixelShader  = compile ps_3_0 PS_DrawBright();
+	}
+
+	pass BlurX1Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(4, true);
+		PixelShader  = compile ps_3_0 PS_Blur(BrightSamp);
+	}
+	pass BlurY1Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(4, false);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp1X);
+	}
+	pass BlurX2Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(8, true);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp1Y);
+	}
+	pass BlurY2Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(8, false);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp2X);
+	}
+	pass BlurX3Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(16, true);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp2Y);
+	}
+	pass BlurY3Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(16, false);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp3X);
+	}
+	pass BlurX4Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(32, true);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp3Y);
+	}
+	pass BlurY4Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(32, false);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp4X);
+	}
+	pass BlurX5Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(64, true);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp4Y);
+	}
+	pass BlurY5Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(64, false);
+		PixelShader  = compile ps_3_0 PS_Blur(BlurSamp5X);
+	}
+	pass BlurMixPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(4, true);
+		PixelShader  = compile ps_3_0 PS_BlurMix();
+	}
+	#endif
+
+	#if ENABLE_SOFTFOCUS > 0
+	pass SoftfocusPreparePass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, true);
+		PixelShader  = compile ps_3_0 PS_SoftfocusPrepare(ScnSamp);
+	}
+	pass SoftfocusBlurXPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, true);
+		PixelShader  = compile ps_3_0 PS_Blur(SoftfocusSampY);
+	}
+	pass SoftfocusBlurYPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, false);
+		PixelShader  = compile ps_3_0 PS_Blur(SoftfocusSampX);
+	}
+	pass SoftfocusBlurX2Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(4, true);
+		PixelShader  = compile ps_3_0 PS_Blur(SoftfocusSampY);
+	}
+	pass SoftfocusBlurY2Pass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(4, false);
+		PixelShader  = compile ps_3_0 PS_Blur(SoftfocusSamp2X);
+	}
+	#endif
+
+	#if ENABLE_EDGEBLUR > 0
+	pass EdgeDetectPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, true);
+		PixelShader  = compile ps_3_0 PS_EdgeDetect(ScnSamp);
+	}
+	pass EdgeBlurXPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, true);
+		PixelShader  = compile ps_3_0 PS_Blur(EdgeSampY);
+	}
+	pass EdgeBlurYPass < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_Blur(2, false);
+		PixelShader  = compile ps_3_0 PS_Blur(EdgeSampX);
+	}
+	#endif
+
+	pass DrawBuffer < string Script= "Draw=Buffer;"; > {
+		VertexShader = compile vs_3_0 VS_DrawBuffer();
+		PixelShader  = compile ps_3_0 PS_DrawBuffer();
+	}
+}
+
