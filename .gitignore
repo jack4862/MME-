@@ -1,0 +1,20 @@
+# 只发布 01-08 的有用内容；其余为整理过程中的辅助目录
+/_工具/
+/_说明书原文UTF8/
+/_原始压缩包/
+/_中文译文片段/
+/_重复文件/
+/00-总索引/
+
+# 大文件/与已解压目录重复的压缩包，暂不进入普通 git
+/04-ray-mmd-master（材质最全）/ray-mmd-master*.zip
+/05-材质与预设/_modern_ray_alpha原始zip/*.zip
+
+# 超过 GitHub 普通文件 100MB 限制、待后续单独处理
+/02-MME大合集（约250套）/z_LeafLight/LeafLight.png
+
+# Windows 常见垃圾文件
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
