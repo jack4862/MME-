@@ -1,0 +1,157 @@
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+#include "../ikPolishShader.fxsub"
+#include "shadowCommons.fxsub"
+
+// 各シャドウマップの間の境界の幅
+#define BorderOffset	(1.0 / SHADOW_TEX_SIZE)
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// 座法変換行列
+float4x4 matW			: WORLD;
+
+static float4x4 lightMatWVP = mul(mul(matW, lightMatV), lightMatP);
+
+float4x4 matWVP				: WORLDVIEWPROJECTION;
+
+// マテリアル色
+float4   MaterialDiffuse   : DIFFUSE  < string Object = "Geometry"; >;
+
+bool opadd;		// 加算合成フラグ
+
+// オブジェクトのテクスチャ
+texture ObjectTexture: MATERIALTEXTURE;
+sampler ObjTexSampler = sampler_state {
+	texture = <ObjectTexture>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = LINEAR;
+	ADDRESSU  = WRAP;
+	ADDRESSV  = WRAP;
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// オブジェクト描画（セルフシャドウON）
+
+struct DrawObject_OUTPUT {
+	float4 Pos		: POSITION;		// 射影変換座標
+	float2 Tex		: TEXCOORD0;	// テクスチャ
+	float4 PPos		: TEXCOORD2;
+};
+
+DrawObject_OUTPUT DrawObject_VS(float4 Pos : POSITION, float3 Normal : NORMAL, float2 Tex : TEXCOORD0, uniform int cascadeIndex)
+{
+	DrawObject_OUTPUT Out = (DrawObject_OUTPUT)0;
+	Out.Pos = mul( Pos, lightMatWVP );
+	// Out.Pos /= Out.Pos.w; // lightMatPにw成分は無いので、wが1だとすれば、matWによるスケーリング。
+
+	if (cascadeIndex == 0)
+	{
+		Out.Pos.xy = Out.Pos.xy * lightParam[0].xy + lightParam[0].zw;
+		Out.Pos.xy = Out.Pos.xy * 0.5 + (float2(-1, 1) * 0.5f);
+	}
+	else if (cascadeIndex == 1)
+	{
+		Out.Pos.xy = Out.Pos.xy * lightParam[1].xy + lightParam[1].zw;
+		Out.Pos.xy = Out.Pos.xy * 0.5 + (float2( 1, 1) * 0.5f);
+	}
+	else if (cascadeIndex == 2)
+	{
+		Out.Pos.xy = Out.Pos.xy * lightParam[2].xy + lightParam[2].zw;
+		Out.Pos.xy = Out.Pos.xy * 0.5 + (float2(-1,-1) * 0.5f);
+	}
+	else
+	{
+		Out.Pos.xy = Out.Pos.xy * lightParam[3].xy + lightParam[3].zw;
+		Out.Pos.xy = Out.Pos.xy * 0.5 + (float2( 1,-1) * 0.5f);
+	}
+
+	// depth clamping
+	Out.Pos.z = max(Out.Pos.z, LightZMin / LightZMax);
+
+	Out.PPos = Out.Pos;
+	Out.Tex = Tex;
+
+	return Out;
+}
+
+float4 DrawObject_PS(DrawObject_OUTPUT IN, uniform int cascadeIndex, uniform bool useTexture) : COLOR
+{
+	if ( cascadeIndex == 0 )
+	{
+		clip( -IN.PPos.x + BorderOffset);
+		clip(  IN.PPos.y - BorderOffset);
+	}
+	else if( cascadeIndex == 1 )
+	{
+		clip(  IN.PPos.x - BorderOffset);
+		clip(  IN.PPos.y - BorderOffset);
+	}
+	else if( cascadeIndex == 2 )
+	{
+		clip( -IN.PPos.x + BorderOffset);
+		clip( -IN.PPos.y + BorderOffset);
+	}
+	else
+	{
+		clip(  IN.PPos.x - BorderOffset);
+		clip( -IN.PPos.y + BorderOffset);
+	}
+
+	clip( !opadd - 0.001f );	// 加算半透明なら無視する
+	float alpha = MaterialDiffuse.a;
+	alpha *= (abs(MaterialDiffuse.a - 0.98) >= 0.01); // ??
+	if ( useTexture ) alpha *= tex2D( ObjTexSampler, IN.Tex.xy ).a;
+	clip(alpha - CasterAlphaThreshold);
+
+	float z = IN.PPos.z;
+	return float4(z, z*z, 0, 1);
+}
+
+
+#define OBJECT_TEC(name, mmdpass, tex) \
+	technique name < string MMDPass = mmdpass; bool UseTexture = tex; \
+	> { \
+		pass DrawObject0 { \
+			AlphaBlendEnable = FALSE;	AlphaTestEnable = TRUE; \
+			VertexShader = compile vs_3_0 DrawObject_VS(0); \
+			PixelShader  = compile ps_3_0 DrawObject_PS(0, tex); \
+		} \
+		pass DrawObject1 { \
+			AlphaBlendEnable = FALSE;	AlphaTestEnable = TRUE; \
+			VertexShader = compile vs_3_0 DrawObject_VS(1); \
+			PixelShader  = compile ps_3_0 DrawObject_PS(1, tex); \
+		} \
+		pass DrawObject2 { \
+			AlphaBlendEnable = FALSE;	AlphaTestEnable = TRUE; \
+			VertexShader = compile vs_3_0 DrawObject_VS(2); \
+			PixelShader  = compile ps_3_0 DrawObject_PS(2, tex); \
+		} \
+		pass DrawObject3 { \
+			AlphaBlendEnable = FALSE;	AlphaTestEnable = TRUE; \
+			VertexShader = compile vs_3_0 DrawObject_VS(3); \
+			PixelShader  = compile ps_3_0 DrawObject_PS(3, tex); \
+		} \
+	}
+
+/*
+OBJECT_TEC(DepthTec2, "object", false)
+OBJECT_TEC(DepthTec3, "object", true)
+*/
+technique DepthTec0 < string MMDPass = "object"; >{}
+
+OBJECT_TEC(DepthTecBS2, "object_ss", false)
+OBJECT_TEC(DepthTecBS3, "object_ss", true)
+
+technique EdgeTec < string MMDPass = "edge"; > {}
+technique ShadowTec < string MMDPass = "shadow"; > {}
+technique ZplotTec < string MMDPass = "zplot"; > {}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////

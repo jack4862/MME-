@@ -1,0 +1,82 @@
+[Info]
+Version = 3
+
+[Object]
+Acs1 = UserFile\NCHLShader2\AmbientController.x
+Acs2 = UserFile\NCHLShader2\BackLightController.x
+Acs3 = UserFile\NCHLShader2\ExcellentShadow2\ExcellentShadow.x
+Acs4 = UserFile\NCHLShader2\HgSAO_v001\HgSAO.x
+Acs5 = UserFile\NCHLShader2\è∞âe.x
+Acs6 = UserFile\NCHLShader2\SoftLightA.x
+Acs7 = UserFile\NCHLShader2\SoftLightB.x
+
+[Effect]
+Default = none
+Acs1 = none
+Acs2 = none
+Acs5 = UserFile\NCHLShader2\è∞âe.fx
+
+[Effect@ExcellentShadowZMap]
+Owner = Acs3
+Acs1 = none
+Acs1.show = false
+Acs2 = none
+Acs2.show = false
+Acs3.show = false
+Acs4.show = false
+Acs5 = UserFile\NCHLShader2\ExcellentShadow2\ExcellentShadowZBufDraw.fxsub
+Acs5.show = true
+Acs6.show = false
+Acs7.show = false
+
+[Effect@ExcellentShadowZMapFar]
+Owner = Acs3
+Acs1 = none
+Acs1.show = false
+Acs2 = none
+Acs2.show = false
+Acs3.show = false
+Acs4.show = false
+Acs5 = UserFile\NCHLShader2\ExcellentShadow2\ExcellentShadowZBufDrawFar.fxsub
+Acs5.show = true
+Acs6.show = false
+Acs7.show = false
+
+[Effect@ScreenShadowMap]
+Owner = Acs3
+Acs1 = none
+Acs1.show = false
+Acs2 = none
+Acs2.show = false
+Acs3.show = false
+Acs4.show = false
+Acs5 = UserFile\NCHLShader2\ExcellentShadow2\ExcellentShadowObject.fxsub
+Acs5.show = true
+Acs6.show = false
+Acs7.show = false
+
+[Effect@HgSAO_DepRT]
+Owner = Acs4
+Acs1 = none
+Acs1.show = false
+Acs2 = none
+Acs2.show = false
+Acs3.show = false
+Acs4.show = false
+Acs5 = UserFile\NCHLShader2\HgSAO_v001\HgSAO_Depth.fxsub
+Acs5.show = true
+Acs6.show = false
+Acs7.show = false
+
+[Effect@HgSAO_NmlRT]
+Owner = Acs4
+Acs1 = none
+Acs1.show = false
+Acs2 = none
+Acs2.show = false
+Acs3.show = false
+Acs4.show = false
+Acs5 = UserFile\NCHLShader2\HgSAO_v001\HgSAO_Normal.fxsub
+Acs6.show = false
+Acs7.show = false
+

@@ -1,0 +1,79 @@
+float4x4 RotX(float4x4 inMat,float rad)
+{
+	float4x4 ret = inMat;
+	
+	float4x4 matRot;
+	matRot[0] = float4(1,0,0,0); 
+	matRot[1] = float4(0,cos(rad),sin(rad),0); 
+	matRot[2] = float4(0,-sin(rad),cos(rad),0);
+	matRot[3] = float4(0,0,0,1);
+
+	ret = mul(ret,matRot);
+	
+	return ret;
+}
+float4x4 RotY(float4x4 inMat,float rad)
+{
+	float4x4 ret = inMat;
+	
+	float4x4 matRot;
+	matRot[0] = float4(cos(rad),0,-sin(rad),0); 
+	matRot[1] = float4(0,1,0,0); 
+	matRot[2] = float4(sin(rad),0,cos(rad),0); 
+	matRot[3] = float4(0,0,0,1); 
+
+	ret = mul(ret,matRot);
+	return ret;
+	
+}
+float4x4 RotZ(float4x4 inMat,float rad)
+{
+	float4x4 ret = inMat;
+	
+	float4x4 matRot;
+	matRot[0] = float4(cos(rad),sin(rad),0,0); 
+	matRot[1] = float4(-sin(rad),cos(rad),0,0); 
+	matRot[2] = float4(0,0,1,0);
+	matRot[3] = float4(0,0,0,1);
+
+	ret = mul(ret,matRot);
+	return ret;
+}
+
+float3 RotX_vec(float3 pos,float rad)
+{
+	float4x4 mat;
+	
+	mat[0] = float4(1,0,0,0); 
+	mat[1] = float4(0,1,0,0); 
+	mat[2] = float4(0,0,1,0);
+	mat[3] = float4(pos.x,pos.y,pos.z,1);
+	
+	return RotX(mat,rad)[3].xyz;
+}
+float3 RotY_vec(float3 pos,float rad)
+{
+	float4x4 mat;
+	
+	mat[0] = float4(1,0,0,0); 
+	mat[1] = float4(0,1,0,0); 
+	mat[2] = float4(0,0,1,0);
+	mat[3] = float4(pos.x,pos.y,pos.z,1);
+	
+	return RotY(mat,rad)[3].xyz;
+}
+float3 RotZ_vec(float3 pos,float rad)
+{
+	float4x4 mat;
+	
+	mat[0] = float4(1,0,0,0); 
+	mat[1] = float4(0,1,0,0); 
+	mat[2] = float4(0,0,1,0);
+	mat[3] = float4(pos.x,pos.y,pos.z,1);
+	
+	return RotZ(mat,rad)[3].xyz;
+}
+float inv_pow(float f,float p)
+{
+	return 1.0-pow(1-f,p);
+}

@@ -1,0 +1,314 @@
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// RLR
+// 金属やガラスの映り込み用
+
+
+// 2パス目のRLRで参照する近傍領域
+static float2 Rlr2Offsets[] = {
+	float2(-1,-1),
+	float2( 0,-1),
+	float2( 1,-1),
+
+	float2(-1, 0),
+	float2( 1, 0),
+
+	float2(-1, 1),
+	float2( 0, 1),
+	float2( 1, 1),
+};
+
+
+// 画面端に近いか?
+inline float CalcEdgeFalloff(float2 texCoord)
+{
+	const float Margin = 64.0;
+	float2 EdgeWidth = Margin * 2.0 / (ViewportSize.xy * WORKSPACE_SCALE);
+	float2 falloff = (EdgeWidth + abs(texCoord) - 1.0) / EdgeWidth;
+	return 1.0 - saturate(max(falloff.x, falloff.y));
+}
+
+
+// 面の向きを元に画面内から映り込みそうなものを探す。
+// ここではヒットした位置だけを出力する。
+float4 PS_RLR( float4 Tex: TEXCOORD0 ) : COLOR
+{
+#if RLRRayCount > 0
+
+	const float maxDistance = 4000;
+	const float zThickness = 2.0;
+	const float nearZ = 1.0;
+
+	float2 tex2 = Tex.zw;
+
+	float3 WPos, N;
+	float Depth;
+	GetWND(tex2, WPos, N, Depth);
+
+	float3 V = normalize(CameraPosition - WPos);
+	float4 R = float4(normalize(reflect(-V, N)), 0);
+
+	float4 BeginPos = float4(WPos, 1);
+	float Vz = mul(BeginPos, matV).z;
+	float VRz = mul(R.xyz, (float3x3)matV).z;
+	float rayLength = (VRz > 0.0) ? maxDistance : min((nearZ - Vz)/VRz, maxDistance);
+	float4 EndPos = BeginPos + R * rayLength;
+
+	float4 PPos0 = mul(BeginPos, matVP);
+	float4 PPos1 = mul(EndPos, matVP);
+	float k0 = 1.0 / PPos0.w;
+	float k1 = 1.0 / PPos1.w;
+	float2 P0 = PPos0.xy * k0 * float2(0.5, -0.5) + 0.5;
+	float2 P1 = PPos1.xy * k1 * float2(0.5, -0.5) + 0.5;
+		// ※ P0 == P1のとき 0除算が発生する。
+
+	// 画面外に出るのが確定なら、画面端までで走査を打ち切る
+	float2 dP0 = abs((saturate(P1) - P0) / (P1 - P0));
+	float d = min(dP0.x, dP0.y) / (RLRRayCount + 1.0);
+
+	// ジッター
+	float2 rndTexOffset = (tex2 * ViewportSize * WORKSPACE_SCALE);
+	int index = (int)(rndTexOffset.x % 4) * 4 + (int)(rndTexOffset.y % 4);
+	float offset = JitterOffsets[index];
+
+	float Q0 = Vz * k0;
+	float Q1 = mul(EndPos, matV).z * k1;
+
+	float2 vP = (P1 - P0) * d;
+	float vQ = (Q1 - Q0) * d;
+	float vK = (k1 - k0) * d;
+
+	float2 P = vP * offset + P0;
+	float Q = vQ * offset + Q0;
+	float k = vK * offset + k0;
+    float prevZMaxEstimate = Vz;
+	float2 TgtTexCoord = tex2;
+
+	float bHit = 0;
+	for(int i = 0;
+		i < RLRRayCount && bHit < 1.0;
+		i++, P += vP, Q += vQ, k += vK)
+	{
+		float2 rayZ = float2(prevZMaxEstimate, (vQ * 0.5 + Q) / (vK * 0.5 + k));
+		prevZMaxEstimate = rayZ.y;
+		rayZ = (rayZ.x <= rayZ.y) ? rayZ.xy : rayZ.yx;
+
+		TgtTexCoord = P;
+		float3 rWPos, rN;
+		float sceneZMax;
+		GetWNDLod(TgtTexCoord, rWPos, rN, sceneZMax);
+
+		// 同一平面なら無視する
+		float l = 1.0 / (abs(dot(rWPos - WPos, N)) + 1.0);
+		float NN = dot(rN, N);
+		// ヒットしたか?
+		bHit = ((NN * l < 0.7) && (rayZ.y >= sceneZMax - zThickness) && (rayZ.x <= sceneZMax));
+	}
+
+	return float4(TgtTexCoord * 2 - 1, bHit, 1);
+#else
+
+	return float4(0, 0, 0, 1);
+
+#endif
+}
+
+
+// RLRでヒットした位置を元にさらに詳細にチェックする。
+// 自分の周囲のヒット結果も参照するので、前パスで自分がヒット先を見つけられなくても、
+// 妥当なヒット先を見つけられる可能性がある。
+float4 PS_RLR2( float4 Tex: TEXCOORD0 ) : COLOR
+{
+	float2 tex2 = Tex.zw;
+
+	float proximity = 0;
+	float occlusion = 1.0;
+
+	float3 WPos, N;
+	float Depth;
+	GetWND(tex2, WPos, N, Depth);
+
+	float3 mat = tex2D( MaterialMap, tex2).xyz;
+	float smoothness = mat.y;
+
+	float3 V = normalize(CameraPosition - WPos);
+	float4 R = float4(normalize(reflect(-V, N)), 0);
+
+#if RLRRayCount > 0
+
+	float3 uv = tex2D(ReflectionWorkMapSamp, tex2).xyz;
+	float3 uvSum = float3(uv.xy * uv.z, uv.z) * 4.0; // RLRの結果を優先する。
+
+#if RLRRayCount2 > 0
+	// 周囲のヒット結果を元に、その近傍を調査する。
+
+	float4 BeginPos = float4(WPos, 1);
+	float Vz = mul(BeginPos, matV).z;
+	float invVRz = 1.0 / mul(R.xyz, (float3x3)matV).z;
+
+	float cDepth = tex2Dlod( NormalSamp, float4(uv.xy * 0.5 + 0.5,0,0)).w;
+	float minDistance = (uv.z > 0.0) ? cDepth - 5 : (Vz + 1000);
+	float maxDistance = (uv.z > 0.0) ? cDepth + 5 : 0;
+
+	// 周囲がどの程度の距離でヒットしているか調べる。
+	[unroll] for(int i = 0; i < 8; i++)
+	{
+		float2 texCoord = Rlr2Offsets[i] * (ViewportOffset2 * 2.0) + tex2;
+		float3 uv = tex2D(ReflectionWorkMapSamp, texCoord).xyz;
+
+		float3 tWPos, tN;
+		float tDepth;
+		GetWNDLod(uv.xy * 0.5 + 0.5, tWPos, tN, tDepth);
+
+		// 距離を計算
+		float d = (tDepth - Depth) * invVRz;
+		// まったく方向が一致しないようなら無視
+		float w = max(dot(normalize(tWPos - WPos), R.xyz), 0);
+		float judge = uv.z * (d > 0.0) * w;
+		minDistance = (judge > 0.75) ? min(minDistance, d) : minDistance;
+		maxDistance = (judge > 0.75) ? max(maxDistance, d) : maxDistance;
+
+		uvSum += float3(uv.xy, 1) * ((judge > 0.75) * 0.2 * uv.z);
+	}
+
+	// ヒットした距離周辺を調べる
+	float dDistance = clamp((maxDistance - minDistance) * 0.25, 0, 10.0);
+	if (dDistance > 0.0)
+	{
+		float midpoint = (maxDistance + minDistance) * 0.5;
+
+		float4 WPos0 = R * (midpoint - dDistance) + BeginPos;
+		float4 WPos1 = R * (midpoint + dDistance) + BeginPos;
+
+		float4 PPos0 = mul(WPos0, matVP);
+		float4 PPos1 = mul(WPos1, matVP);
+		float k0 = 1.0 / PPos0.w;
+		float k1 = 1.0 / PPos1.w;
+
+		float2 P0 = PPos0.xy * k0 * float2(0.5, -0.5) + 0.5;
+		float2 P1 = PPos1.xy * k1 * float2(0.5, -0.5) + 0.5;
+		float2 dP0 = abs((saturate(P1) - P0) / (P1 - P0));
+		float d = min(dP0.x, dP0.y) * (1.0 / RLRRayCount2);
+			// P1だけでなく、P0も画面外の可能性がある
+
+		float Q0 = mul(WPos0, matV).z * k0;
+		float Q1 = mul(WPos1, matV).z * k1;
+
+		float2 vP = (P1 - P0) * d;
+		float vQ = (Q1 - Q0) * d;
+		float vK = (k1 - k0) * d;
+
+		float2 P = P0;
+		float Q = Q0;
+		float k = k0;
+
+		[unroll] for(int i = 0; i < RLRRayCount2; i++, P += vP, Q += vQ, k += vK)
+		{
+			float tDepth = tex2Dlod(NormalSamp, float4(P,0,0)).w;
+//			float w = exp(-abs(Q / k - tDepth) * 0.1 - epsilon);
+			float w = exp(-abs(Q / k - tDepth) - epsilon) * 100.0;
+			uvSum += float3(P * 2.0 - 1.0, 1) * w;
+		}
+	}
+#endif
+
+	float2 TgtTexCoord = uvSum.xy / max(uvSum.z, 1);
+	proximity = saturate(uvSum.z);
+
+	// TgtTexCoord が画面端に近いならフェードさせる
+	float falloff = CalcEdgeFalloff(TgtTexCoord);
+	TgtTexCoord = TgtTexCoord * 0.5 + 0.5;
+	proximity = saturate(min(proximity, falloff));
+
+	float4 ND = tex2Dlod( NormalSamp, float4(TgtTexCoord,0,0));
+	float3 hitN = normalize(ND.xyz);
+	occlusion = saturate(-dot(hitN, R.xyz) * 0.5 + 0.5);
+	// 実はヒットしていない?
+	float4 ppos2 = float4(float3(TgtTexCoord, 1) * ND.w, 1);
+	float4 wpos2 = mul(ppos2, matTex2World);
+	wpos2.xyz = wpos2.xyz / wpos2.w;
+	float3 hitV = normalize(WPos.xyz - wpos2.xyz);
+	float hitDist = length(WPos.xyz - wpos2.xyz);
+	proximity *= (dot(N,-hitV) > 0.0);
+
+	// MEMO: MAX_MIP_LEVELは環境マップ用のなので、ここでは意味が無い
+	float roughness = 1.0 - smoothness;
+	// 距離に応じてボカす
+	roughness = min(roughness + hitDist/(Depth+1.0), 1);
+	float lod = roughness * MAX_MIP_LEVEL;
+	float3 RefColor = Degamma(tex2Dlod(ScnSamp, float4(TgtTexCoord,0,lod)).rgb);
+
+	// 2次反射
+	float3 mat2 = tex2D( MaterialMap, TgtTexCoord).xyz;
+	float smoothness2 = mat2.y;
+	float4 R2 = float4(normalize(reflect(-hitV, hitN)), 0);
+	float3 EnvColor2 = GetEnvColor(R2.xyz, smoothness2);
+	float3 f02 = tex2D( ColorMap, TgtTexCoord).rgb;
+	float3 Reflectance2 = CalcReflectance(mat2, hitN, hitV, f02);
+	RefColor += EnvColor2 * ReflectionScale * Reflectance2;
+
+#else
+	float3 RefColor = 0;
+#endif
+
+	float3 EnvColor = GetEnvColor(R.xyz, smoothness);
+	float3 f0 = tex2D( ColorMap, tex2).rgb;
+	float3 Reflectance = CalcReflectance(mat, N, V, f0);
+	float3 Color = lerp(EnvColor, RefColor * occlusion, proximity) * Reflectance;
+
+	Color += CalcMultiLightSpecular(WPos, N, V, smoothness, f0);
+
+	// 環境マップからの参照の場合、すでにボカし済みなのであまりボカさない。
+	return float4(Color.rgb, proximity * 0.5 + 0.5);
+}
+
+
+
+// RLR用のボカし
+float4 PS_BlurRLR( float4 Tex: TEXCOORD0, uniform bool isXBlur, uniform sampler smp) : COLOR
+{
+	float2 offset = (isXBlur) ? float2(SampStep.x, 0) : float2(0, SampStep.y);
+	float2 texCoord = Tex.zw;
+
+	float4 Color = tex2D( smp, texCoord);
+	float weight0 = Color.w;
+
+#if 0
+	// 深度を考慮しないので周りに明るさが漏れる。
+
+	Color = float4(Color.rgb, 1) * BlurWeight[0] * weight0;
+
+	[unroll] for(int i = 1; i < NUM_BLUR_SAMPLES_RLR; i ++) {
+		float w = BlurWeight[i];
+		float4 cp = tex2D( smp, texCoord + offset * i);	cp.w *= w;
+		float4 cn = tex2D( smp, texCoord - offset * i);	cn.w *= w;
+		Color += float4(cp.rgb,1) * cp.w + float4(cn.rgb, 1) * cn.w;
+	}
+#else
+	Color.w = 1;
+	offset *= weight0;
+
+	float depth = GetDepth(texCoord);
+	float depthRate = 100.0 / (depth + 1.0);
+
+	[unroll] for(int i = 1; i < NUM_BLUR_SAMPLES_RLR; i ++) {
+		float t2 = -(i * i) * (1.0 / (NUM_BLUR_SAMPLES_RLR * NUM_BLUR_SAMPLES_RLR));
+
+		float4 cp = tex2D( smp, texCoord + offset * i);
+		float4 cn = tex2D( smp, texCoord - offset * i);
+		float dp = GetDepth(texCoord + offset * i);
+		float dn = GetDepth(texCoord - offset * i);
+		cp.w = CalcBlurWeight(depth, dp, t2, depthRate);
+		cn.w = CalcBlurWeight(depth, dn, t2, depthRate);
+		Color += float4(cp.rgb,1) * cp.w + float4(cn.rgb,1) * cn.w;
+	}
+
+#endif
+
+	Color.rgb = Color.rgb / Color.w;
+
+	return float4(Color.rgb, weight0);
+}
+
+

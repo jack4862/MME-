@@ -1,0 +1,19 @@
+
+Shader_Main.fx
+　基本となるプリセット(MMD本家よりも陰影がはっきり出る)
+
+Shader_Main_MMD.fx
+　MMD本家と同様の表示になる(フォグは出る)
+
+Shader_Main_AllShadow.fx
+　材質全体に強制的に影が落ちる
+
+Shader_Main_NoShadow.fx
+　影が落ちない
+
+Shader_Main_Skydome.fx
+　スカイドームにフォグを適用したい場合に
+　通常は何も割り当てません
+
+Shader_Main_Toon.fx
+　影をくっきりさせる(トゥーン)

@@ -1,0 +1,58 @@
+
+
+// 枠テクスチャのファイル名
+// 行頭の//でコメントアウトすると枠表示なし
+#define FRAME_TEXTURE_NAME	"frame1.png"
+
+// 鏡面の基本サイズ：おおよそメートル単位。
+#define FRAME_SCALE	float2(8,4)
+// アクセサリのSiでもスケールを変更することができます。
+
+
+// 角度指定
+#define MinMirrorAngle	30		// 最小角度
+#define MaxMirrorAngle	90		// 最大角度
+
+
+// 未使用
+//#define ADD_HEIGHT   (0.05f)
+
+
+// MMD上の描画をHDR情報として扱います
+// 明るさが1を超えた部分が光って見えるようになります
+// 0がオフ、1がオンです
+#define HDR_RENDER  0
+
+// 作業用バッファのサイズを半分にして軽くします
+// 画質は落ちます
+// 0がオフ、1がオンです
+#define HALF_DRAW  0
+
+// 鏡の中の輪郭描画を行うかどうか？
+// 有効にすると重いです。
+// 0: オフ、1: オン。
+#define ENABLE_EDGE 0
+
+// 壁の裏面チェックを行うか?
+// 1: チェックする
+// 背景の床など、大きいポリゴンでは欠け過ぎる場合がある。
+#define CHECK_BACKFACE 1
+
+
+// Basic版ではポストエフェクトは使用不能 
+// ikBokeh用の深度を出力する?
+// #define ENABLE_DOF 1
+// ikBokeh用の設定。基本的にはいじらない
+// #define FAR_DEPTH		1000
+
+// AutoLuminous用の情報を出力する?
+// #define ENABLE_AL 1
+
+
+// コントローラ名
+#define CONTROLLER_NAME		"ikWWController.pmx"
+
+// 鏡の原点なるボーン名
+#define BONE_NAME		"センター"
+
+

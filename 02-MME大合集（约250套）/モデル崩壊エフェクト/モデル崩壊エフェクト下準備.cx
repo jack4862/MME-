@@ -1,0 +1,776 @@
+<?xml version="1.0"?>
+<CSScriptData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ScriptType>CS1</ScriptType>
+  <CompilerVersion>4</CompilerVersion>
+  <ReferenceAssemblies>
+    <string>System.dll</string>
+    <string>System.Core.dll</string>
+    <string>System.Data.dll</string>
+    <string>System.Data.DataSetExtensions.dll</string>
+    <string>System.Deployment.dll</string>
+    <string>System.Drawing.dll</string>
+    <string>System.Windows.Forms.dll</string>
+    <string>System.Xml.dll</string>
+    <string>System.Xml.Linq.dll</string>
+    <string>Microsoft.CSharp.dll</string>
+  </ReferenceAssemblies>
+  <UsingText>using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+using System.IO;
+using PEPlugin;
+using PEPlugin.SDX;
+using PEPlugin.Pmx;
+using PEPlugin.Pmd;
+using PEPlugin.Vmd;
+using PEPlugin.Vme;
+using PEPlugin.Form;
+using PEPlugin.View;
+using SlimDX;
+using SlimDX.Direct3D9;
+using IES = PEPlugin.Vme.IPEVmeEventState;
+using IBS = PEPlugin.Vme.IPEVmeBoneState;
+using ISS = PEPlugin.Vme.IPEVmeSingleValueState;
+using IMS = PEPlugin.Vme.IPEVmeSingleValueState;
+using ICS = PEPlugin.Vme.IPEVmeCameraState;
+using ILS = PEPlugin.Vme.IPEVmeLightState;
+</UsingText>
+  <FullCodeText>////////////////////////////////////////////////////////////////////////////////////
+//
+//		モデル崩壊エフェクト下準備スクリプト v1.4 by Led/折鶴P
+//
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	まず、頂点数0～面を細分化したモデル用の頂点が入ります。細分化した頂点はUVに1000が
+//	加算されています。最後にオリジナルのモデル用の頂点が入ります。
+//
+//	改造されたモデルは必ずcollapse.fxを割り付けて使用します。
+//
+
+
+// Scriptプラグインクラス(クラス名変更不可)
+public class CSScriptClass : PEPluginClass
+{
+
+	/////////////////////////////////////////////////////////////////////////////////////////
+	//  処理が重くて動かない場合、このパラメーターの値を大きくする
+	//
+	const float length_threshold=0.2f; // 分割基準になる最大長さ。この値より長い辺を分割する。
+	// 100とかにすればスカイドームや建物モデルのような大型モデルでない限りまず分割しない
+	//
+	//
+	////////////////////////////////////////////////////////////////////////////////////////
+	public IPEPluginHost		host;
+	public IPEBuilder			builder;
+	public IPEShortBuilder		bd;			//	短絡系ビルダ
+	public IPXPmxBuilder		bdx;		//	PMXビルダ
+	public IPEConnector			connect;
+	public IPEPMDViewConnector	view;
+
+	public const int			LARGEUV	= 1000;
+
+	// PMX関連
+
+	public IPXPmx				pmx;		//	PMX取得
+	public IPXHeader			header;		//	header   :ヘッダ
+	public IPXModelInfo			info;		//	info     :モデル情報
+	public IList&lt;IPXVertex&gt;		vertex;		//	vertex   :頂点   | リスト
+	public IList&lt;IPXMaterial&gt;	material;	//	material :材質   | リスト
+	public IList&lt;IPXBone&gt;		bone;		//	bone     :ボーン | リスト
+	public IList&lt;IPXMorph&gt;		morph;		//	morph    :モーフ | リスト
+	public IList&lt;IPXNode&gt;		node;		//	node     :表示枠 | リスト
+	public IList&lt;IPXBody&gt;		body;		//	body     :剛体   | リスト
+	public IList&lt;IPXJoint&gt;		joint;		//	joint    :Joint  | リスト
+
+
+	public int					errcount=0;
+
+    // コンストラクタ
+    public CSScriptClass() : base()
+    {
+        // 起動オプション
+        // boot時実行(true/false), プラグインメニューへの登録(true/false), メニュー登録名("")
+        m_option = new PEPluginOption(false, true, "CSScript生成プラグイン");
+    }
+
+    // エントリポイント
+    public override void	Run( IPERunArgs args ) {
+        try {
+            // ここへ処理を追加してください.
+            //
+			// ---- 簡易編集用ヘッダコード ----
+
+			// 常用接続変数一括登録
+
+			// ホスト配下
+			this.host		= args.Host;
+			this.builder	= this.host.Builder;
+			this.bd			= this.host.Builder.SC;		// 短絡系ビルダ
+			this.bdx		= this.host.Builder.Pmx;		// PMXビルダ
+			this.connect	= this.host.Connector;
+			this.view		= this.host.Connector.View.PMDView;
+
+			// PMX関連
+
+			this.pmx		= this.connect.Pmx.GetCurrentState();	// PMX取得
+			this.header		= this.pmx.Header;						// header   :ヘッダ
+			this.info		= this.pmx.ModelInfo;					// info     :モデル情報
+			this.vertex		= this.pmx.Vertex;						// vertex   :頂点   | リスト
+			this.material	= this.pmx.Material;					// material :材質   | リスト
+			this.bone		= this.pmx.Bone;						// bone     :ボーン | リスト
+			this.morph		= this.pmx.Morph;						// morph    :モーフ | リスト
+			this.node		= this.pmx.Node;						// node     :表示枠 | リスト
+			this.body		= this.pmx.Body;						// body     :剛体   | リスト
+			this.joint		= this.pmx.Joint;						// joint    :Joint  | リスト
+			/////////////////////////////////////////////////////////////////////////////
+
+			IList&lt;IPXVertex&gt;	PreserveVL	= new List&lt;IPXVertex&gt;();
+			foreach( IPXVertex v in vertex ) {
+				PreserveVL.Add(v);
+			}
+
+			IList&lt;IPXMaterial&gt;	PreserveML	= new List&lt;IPXMaterial&gt;();
+			foreach( IPXMaterial m in material ) {
+				IPXMaterial tmp_m	= (IPXMaterial)m.Clone();
+
+				tmp_m.Faces.Clear();
+				foreach( IPXFace f in m.Faces ) {
+					tmp_m.Faces.Add(f);
+				}
+
+				PreserveML.Add(tmp_m);
+			}
+
+
+			IList&lt;IPXVertex&gt;	VL	= new List&lt;IPXVertex&gt;();
+
+			//	頂点から頂点モーフへの対応を作成する
+			ExVertex[] EVA	= Vertex2MorphList( vertex, morph );
+
+			/*
+			foreach(IPXMorph mo in morph){
+				if(mo.Kind==MorphKind.Vertex){ mo.Offsets.Clear(); }
+			}*/
+
+			IList&lt;IPXFace&gt;	FL3	= new List&lt;IPXFace&gt;();
+			foreach( IPXMaterial m in material ) {
+				IList&lt;IPXFace&gt;	FL	= new List&lt;IPXFace&gt;();
+				foreach( IPXFace f in m.Faces ) {
+					IPXVertex	v;
+					IPXFace		nf	= bdx.Face();
+
+					v				= (IPXVertex)f.Vertex1.Clone();
+					VL.Add(v);
+					nf.Vertex1		= v;
+					ExVertex	eva	= EVA[(int)(v.UVA1.X)];
+					foreach( ExMorphOffset exm in eva.exm ) {
+						IPXVertexMorphOffset	vmoo	= bdx.VertexMorphOffset();
+
+						vmoo.Vertex		= v;
+						vmoo.Offset		= exm.offset;
+						exm.m.Offsets.Add( vmoo );
+					}
+
+					v			= (IPXVertex)f.Vertex2.Clone();
+					VL.Add(v);
+					nf.Vertex2	= v;
+					eva			= EVA[(int)(v.UVA1.X)];
+					foreach( ExMorphOffset exm in eva.exm ) {
+						IPXVertexMorphOffset	vmoo	= bdx.VertexMorphOffset();
+
+						vmoo.Vertex		= v;
+						vmoo.Offset		= exm.offset;
+						exm.m.Offsets.Add( vmoo );
+					}
+
+					v			= (IPXVertex)f.Vertex3.Clone();
+					VL.Add(v);
+					nf.Vertex3	= v;
+					eva			= EVA[(int)(v.UVA1.X)];
+					foreach( ExMorphOffset exm in eva.exm ) {
+						IPXVertexMorphOffset	vmoo	= bdx.VertexMorphOffset();
+
+						vmoo.Vertex		= v;
+						vmoo.Offset		= exm.offset;
+						exm.m.Offsets.Add( vmoo );
+					}
+
+					FL.Add(nf);
+					FL3.Add(nf);
+				}
+
+				m.Faces.Clear();
+				foreach( IPXFace ff in FL ) {
+					m.Faces.Add( ff );
+				}
+
+				//SetDirection(m.Faces);
+			}
+
+			foreach( IPXVertex v in vertex ) {
+				v.UVA1.X	= -1;
+			}
+			vertex.Clear();
+
+			foreach( IPXVertex vv in VL ) {
+				vertex.Add(vv);
+			}
+
+			// UVA1のX座標に分割元の面の頂点を記録
+			for( int i = 0;i &lt; vertex.Count;i++ ) {
+				vertex[i].UVA1	= new V4( i, i-i%3, i-i%3+1, i-i%3+2 );
+			}
+
+			// 面内での相対位置を計算するための情報をUVA2に入れる
+			foreach( IPXMaterial m in material ) {
+				foreach( IPXFace f in m.Faces ) {
+					f.Vertex1.UVA2	= new V4(0,0,0,0);
+					f.Vertex2.UVA2	= new V4(1,0,0,0);
+					f.Vertex3.UVA2	= new V4(0,1,0,0);
+				}
+			}
+
+			IList&lt;IPXVertex&gt;	VV	= new List&lt;IPXVertex&gt;();
+			IList&lt;IPXFace&gt;		FL2	= new List&lt;IPXFace&gt;();
+			foreach( IPXMaterial m in material ) {
+				IList&lt;IPXFace&gt;		FL	= new List&lt;IPXFace&gt;();
+				foreach( IPXFace f in m.Faces ) {
+					IPXPmx	p;
+					p	= RecDivideFace(f);
+
+					foreach( IPXVertex v in p.Vertex ) {
+						VV.Add(v);
+					}
+
+					foreach( IPXFace ff in p.Material[0].Faces ) {
+						FL.Add(ff);
+						FL2.Add(ff);
+					}
+				}
+				m.Faces.Clear();
+				foreach( IPXFace ff in FL ) {
+					m.Faces.Add(ff);
+				}
+			}
+
+			/*
+				for(int i=0;i&lt;VV.Count; i++){
+					VV[i].UVA3=new V4(i,0,0,0);
+				}
+			*/
+
+			FaceMorphOffset[]	FMOA = new FaceMorphOffset[FL3.Count];
+			foreach( IPXMorph mo in morph ) {
+				errcount	= 0;
+				if( mo.Kind != MorphKind.Vertex ) {	continue;	}
+
+				FMOA	= new FaceMorphOffset[FL3.Count];
+				for( int i = 0;i &lt; FMOA.Count();i++ ) {
+					FaceMorphOffset	fmo	= new FaceMorphOffset();
+					fmo.o1		= new V3(0,0,0);
+					fmo.o2		= new V3(0,0,0);
+					fmo.o3		= new V3(0,0,0);
+					FMOA[i]		= fmo;
+				}
+
+				foreach( IPXMorphOffset moo in mo.Offsets ) {
+					IPXVertexMorphOffset	vmo	= (IPXVertexMorphOffset)moo;
+					int						idx	= (int)(vmo.Vertex.UVA1.X/3);
+					int						mod3= ((int)vmo.Vertex.UVA1.X)%3;
+
+					if( idx &lt; 0 ) {	continue;	}
+
+					if( mod3 == 0 )		{	FMOA[idx].o1	= vmo.Offset;	}
+					else if(mod3==1)	{	FMOA[idx].o2	= vmo.Offset;	}
+					else				{	FMOA[idx].o3	= vmo.Offset;	}
+				}
+
+				for( int i = 0;i &lt; VV.Count;i++ ) {
+					int		idx	= (int)(VV[i].UVA1.X/3);
+					if( idx &gt; FMOA.Count() &amp;&amp; errcount &lt; 1 ) {
+						errcount++;
+						MessageBox.Show("UVA1に書き込んだインデックスが正しくありません。");
+					}
+
+					if( FMOA[idx].o1.Length() + FMOA[idx].o2.Length() + FMOA[idx].o3.Length() &lt; 0.000001f ) {
+						continue;
+					}
+
+					V3		o1		= FMOA[idx].o1;
+					V3		o2		= FMOA[idx].o2;
+					V3		o3		= FMOA[idx].o3;
+					float	x		= VV[i].UVA2.X;
+					float	y		= VV[i].UVA2.Y;
+
+					V3		offset	= o1*(1-x-y)+o2*x+o3*y;
+
+					if( offset.Length() &gt; 0.00001f ) {
+						IPXVertexMorphOffset	nvmo	= bdx.VertexMorphOffset();
+						nvmo.Vertex		= VV[i];
+						nvmo.Offset		= offset;
+
+						mo.Offsets.Add( nvmo );
+					}
+				}
+			}
+
+			vertex.Clear();
+
+			IList&lt;IPXVertex&gt;	SV	= new List&lt;IPXVertex&gt;();
+			foreach( IPXMaterial m in material ) {
+				m.Name	+= "_細分";
+				m.Edge	= false;
+
+				IList&lt;IPXVertex&gt;	tempvl	= SetDirection( m.Faces );
+
+				foreach( IPXVertex v in tempvl ) {
+					SV.Add(v);
+				}
+			}
+
+			foreach( IPXVertex v in SV ) {
+				v.UV.X+=LARGEUV; // 分割後の面のための頂点は目印としてUVの座標に1000プラス
+				vertex.Add(v);
+			}
+
+			foreach( IPXVertex v in PreserveVL ) {
+				vertex.Add(v);
+			}
+
+
+			// もとあった材質を材質モーフに登録しなおす
+			// 材質はせいぜい１００も作らないというつもりで材質数ｘモーフ数に比例する時間の手抜きルーチン
+			foreach( IPXMorph mor in morph ) {
+				IList&lt;IPXMorphOffset&gt;	newlmo	= new List&lt;IPXMorphOffset&gt;();
+
+				if( mor.IsMaterial ) {
+					for( int i = 0;i &lt; material.Count;i++ ) {
+						IList&lt;IPXMorphOffset&gt;	lmo	= mor.Offsets;
+						foreach( IPXMorphOffset mo in lmo ) {
+							IPXMaterialMorphOffset	mmo	= (IPXMaterialMorphOffset)mo;
+
+							if( mmo.Material == material[i] ) {
+								IPXMaterialMorphOffset	newmmo	= (IPXMaterialMorphOffset)mmo.Clone();
+								newmmo.Material		= PreserveML[i];
+								newlmo.Add( newmmo );
+							}
+						}
+					}
+					foreach( IPXMorphOffset newmo in newlmo ) {
+						mor.Offsets.Add( newmo );
+					}
+				}
+			}
+
+			for( int i = 0;i &lt; PreserveML.Count;i++ ) {
+				//material.Insert(0,PreserveML[PreserveML.Count-i-1]);
+				material.Add( PreserveML[i] );
+			}
+
+
+
+			//pmx.Header.UVACount=3;
+
+			/////////////////////////////////////////////////////////////////////////////
+			//
+			// ---- 簡易編集用フッタコード ----
+
+			// 更新処理
+			// デフォルト設定ではフッタコードはOFF
+
+			// PMX更新
+			connect.Pmx.Update( pmx );
+
+			/*
+			// PMD更新
+			connect.Pmd.Update(pmd);
+			//connect.Pmd.UpdateEx(pex);
+			*/
+
+			// Form更新
+			connect.Form.UpdateList( UpdateObject.All );	//	重い場合は引数を変更して個別に更新
+
+			// PMDView更新
+			connect.View.PMDView.UpdateModel();				//	Viewの更新が不要な場合はコメントアウト
+			connect.View.PMDView.UpdateView();
+
+		}
+		catch ( Exception ex ) {
+			MessageBox.Show(ex.Message, "エラー", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+		}
+	}
+
+	ExVertex[] Vertex2MorphList(IList&lt;IPXVertex&gt; vl, IList&lt;IPXMorph&gt; mol){
+		//頂点の UVA1 を作業領域に使うので、拡張UVを使ったモデルには使用不可
+
+		ExVertex[]	EVA	= new ExVertex[vl.Count];
+
+		for( int i = 0;i &lt; vl.Count;i++ ) {
+			vl[i].UVA1	= new V4(i,0,0,0);
+
+			EVA[i]		= new ExVertex(vl[i]);
+		}
+
+		foreach( IPXMorph mo in mol ) {
+			if( mo.Kind == MorphKind.Vertex ) {
+				foreach( IPXMorphOffset moo in mo.Offsets ) {
+					IPXVertexMorphOffset	vmoo	= (IPXVertexMorphOffset)moo;
+
+					EVA[(int)(vmoo.Vertex.UVA1.X)].exm.Add(new ExMorphOffset(mo, vmoo.Offset));
+				}
+			}
+		}
+		return EVA;
+	}
+
+	float	FaceArea( IPXFace f ) {
+		V3	x	= f.Vertex2.Position-f.Vertex1.Position;
+		V3	y	= f.Vertex3.Position-f.Vertex1.Position;
+
+		return Math.Abs(OuterProduct(x,y).Length()/2.0f);
+	}
+
+	// 再帰的に十分小さくなるまで面を分割する
+	IPXPmx	RecDivideFace( IPXFace f ) {
+		IPXPmx		p;
+		IPXPmx		p3	= bdx.Pmx();
+		p3.Material.Add( bdx.Material() );
+
+		if( IsLarge( f ) ) {
+			p	= DivideFace_Half( f );
+
+			IPXPmx		p2;
+			foreach( IPXFace fff in p.Material[0].Faces ) {
+				p2	= RecDivideFace( fff );
+
+				foreach( IPXVertex v in p2.Vertex ) {
+					p3.Vertex.Add(v);
+				}
+				foreach( IPXFace ff in p2.Material[0].Faces ) {
+					p3.Material[0].Faces.Add( ff );
+				}
+			}
+		} else {
+			p3		= bdx.Pmx();
+			p3.Material.Add( bdx.Material() );
+			p3.Material[0].Faces.Add( NewFace(p3.Vertex,f.Vertex1,f.Vertex2,f.Vertex3) );
+		}
+		return	p3;
+	}
+
+
+	// 面fを分割するべきかどうかの判定
+	bool	IsLarge( IPXFace f ) {
+		if(	( f.Vertex2.Position - f.Vertex1.Position ).Length() &gt; length_threshold
+		||	( f.Vertex3.Position - f.Vertex2.Position ).Length() &gt; length_threshold
+		||	( f.Vertex1.Position - f.Vertex3.Position ).Length() &gt; length_threshold	) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	// 面一つの一番長い辺を２等分してできる２つの三角形
+	IPXPmx	DivideFace_Half( IPXFace f ) {
+		IPXPmx		p	= bdx.Pmx();
+		IPXVertex	v1	= (IPXVertex)f.Vertex1.Clone();
+		IPXVertex	v2	= (IPXVertex)f.Vertex2.Clone();
+		IPXVertex	v3	= (IPXVertex)f.Vertex3.Clone();
+		IPXVertex	v12	= (IPXVertex)PriorityVertex(v1,v2).Clone();
+		IPXVertex	v23	= (IPXVertex)PriorityVertex(v2,v3).Clone();
+		IPXVertex	v31	= (IPXVertex)PriorityVertex(v3,v1).Clone();
+
+		p.Material.Add( bdx.Material() );
+
+		v12.Normal	= (f.Vertex1.Normal+f.Vertex2.Normal) / 2.0f;
+		v23.Normal	= (f.Vertex2.Normal+f.Vertex3.Normal) / 2.0f;
+		v31.Normal	= (f.Vertex3.Normal+f.Vertex1.Normal) / 2.0f;
+
+		v12.UV		= (f.Vertex1.UV+f.Vertex2.UV)/2.0f;
+		v23.UV		= (f.Vertex2.UV+f.Vertex3.UV)/2.0f;
+		v31.UV		= (f.Vertex3.UV+f.Vertex1.UV)/2.0f;
+
+		v2.UVA1		=
+		v3.UVA1		=
+		v12.UVA1	=
+		v23.UVA1	=
+		v31.UVA1	= v1.UVA1;
+
+		v12.UVA2	= (f.Vertex1.UVA2+f.Vertex2.UVA2)/2.0f;
+		v23.UVA2	= (f.Vertex2.UVA2+f.Vertex3.UVA2)/2.0f;
+		v31.UVA2	= (f.Vertex3.UVA2+f.Vertex1.UVA2)/2.0f;
+
+		v12.Position=(f.Vertex1.Position+f.Vertex2.Position)/2.0f;
+		v23.Position=(f.Vertex2.Position+f.Vertex3.Position)/2.0f;
+		v31.Position=(f.Vertex3.Position+f.Vertex1.Position)/2.0f;
+
+		float	l12	= (v1.Position-v2.Position).Length();
+		float	l23	= (v2.Position-v3.Position).Length();
+		float	l31	= (v3.Position-v1.Position).Length();
+
+		p.Vertex.Add(v1);
+		p.Vertex.Add(v2);
+		p.Vertex.Add(v3);
+		if( l12 &gt; l23 &amp;&amp; l12 &gt; l31 ) {
+			p.Vertex.Add( v12 );
+			p.Material[0].Faces.Add( NewFace( p.Vertex,v1, v12, v3 ) );
+			p.Material[0].Faces.Add( NewFace( p.Vertex,v12, v2, v3 ) );
+		} else if( l23 &gt; l31 &amp;&amp; l23 &gt; l12 ) {
+			p.Vertex.Add( v23 );
+			p.Material[0].Faces.Add( NewFace(p.Vertex,v2, v23, v1) );
+			p.Material[0].Faces.Add( NewFace(p.Vertex,v23, v3, v1) );
+		} else {
+			p.Vertex.Add( v31 );
+			p.Material[0].Faces.Add( NewFace(p.Vertex,v3, v31, v2) );
+			p.Material[0].Faces.Add( NewFace(p.Vertex,v31, v1, v2) );
+		}
+
+		return p;
+	}
+
+	// 面一つをゼルダの紋章的に４等分する
+	IPXPmx	DivideFace_Zelda( IPXFace f ) {
+		IPXPmx		p	= bdx.Pmx();
+		IPXVertex	v1	= (IPXVertex)f.Vertex1.Clone();
+		IPXVertex	v2	= (IPXVertex)f.Vertex2.Clone();
+		IPXVertex	v3	= (IPXVertex)f.Vertex3.Clone();
+		IPXVertex	v12	= (IPXVertex)PriorityVertex(v1,v2).Clone();
+		IPXVertex	v23	= (IPXVertex)PriorityVertex(v2,v3).Clone();
+		IPXVertex	v31	= (IPXVertex)PriorityVertex(v3,v1).Clone();
+
+		p.Material.Add( bdx.Material() );
+
+		v12.Normal	= (f.Vertex1.Normal+f.Vertex2.Normal)/2.0f;
+		v23.Normal	= (f.Vertex2.Normal+f.Vertex3.Normal)/2.0f;
+		v31.Normal	= (f.Vertex3.Normal+f.Vertex1.Normal)/2.0f;
+
+		v12.UV		= (f.Vertex1.UV+f.Vertex2.UV)/2.0f;
+		v23.UV		= (f.Vertex2.UV+f.Vertex3.UV)/2.0f;
+		v31.UV		= (f.Vertex3.UV+f.Vertex1.UV)/2.0f;
+
+		v2.UVA1		=
+		v3.UVA1		=
+		v12.UVA1	=
+		v23.UVA1	=
+		v31.UVA1	= v1.UVA1;
+
+		v12.UVA2	= (f.Vertex1.UVA2+f.Vertex2.UVA2)/2.0f;
+		v23.UVA2	= (f.Vertex2.UVA2+f.Vertex3.UVA2)/2.0f;
+		v31.UVA2	= (f.Vertex3.UVA2+f.Vertex1.UVA2)/2.0f;
+
+		v12.Position=(f.Vertex1.Position+f.Vertex2.Position)/2.0f;
+		v23.Position=(f.Vertex2.Position+f.Vertex3.Position)/2.0f;
+		v31.Position=(f.Vertex3.Position+f.Vertex1.Position)/2.0f;
+
+		p.Material[0].Faces.Add( NewFace(p.Vertex,v1, v12, v31) );
+		p.Material[0].Faces.Add( NewFace(p.Vertex,v12, v2, v23) );
+		p.Material[0].Faces.Add( NewFace(p.Vertex,v12, v23, v31) );
+		p.Material[0].Faces.Add( NewFace(p.Vertex,v23, v3, v31) );
+
+		return	p;
+	}
+
+	IPXVertex	PriorityVertex( IPXVertex x, IPXVertex y ) {
+		if( InnerProduct( x.Position, new V3(1,1,1) ) &gt; InnerProduct( y.Position, new V3(1,1,1) ) ) {
+			return	x;
+		} else {
+			return	y;
+		}
+	}
+
+	IPXFace		NewFace( IList&lt;IPXVertex&gt; vl, IPXVertex v1, IPXVertex v2, IPXVertex v3 ) {
+		IPXFace		nf	= bdx.Face();
+		IPXVertex	a	= (IPXVertex)v1.Clone();
+		IPXVertex	b	= (IPXVertex)v2.Clone();
+		IPXVertex	c	= (IPXVertex)v3.Clone();
+
+		b.UVA1		=
+		c.UVA1		= a.UVA1;
+		nf.Vertex1	= a;
+		nf.Vertex2	= b;
+		nf.Vertex3	= c;
+
+		vl.Add(a);
+		vl.Add(b);
+		vl.Add(c);
+
+		return	nf;
+	}
+
+	// 辺の外積方向に頂点の法線を指定する
+	IList&lt;IPXVertex&gt;	SetDirection( IList&lt;IPXFace&gt; FL ) {
+		IList&lt;IPXVertex&gt;	vl	= new List&lt;IPXVertex&gt;();
+		foreach( IPXFace f in FL ) {
+			V3		n	= OuterProduct( f.Vertex2.Position-f.Vertex1.Position, f.Vertex3.Position-f.Vertex1.Position );
+			if( n.Length() &gt; 0 ) {
+				n	/= n.Length();
+			}
+
+			f.Vertex1.Normal	= n;
+			IPXVertex	v2	= f.Vertex2;
+			IPXVertex	v3	= f.Vertex3;
+
+			f.Vertex1	= (IPXVertex)f.Vertex1.Clone();
+			vl.Add( f.Vertex1 );
+		
+			f.Vertex2	= (IPXVertex)f.Vertex1.Clone();
+			f.Vertex3	= (IPXVertex)f.Vertex1.Clone();
+
+			f.Vertex2.Position	= v2.Position;
+			f.Vertex2.UV		= v2.UV;
+			f.Vertex2.UVA1		= v2.UVA1;
+			f.Vertex2.UVA2		= v2.UVA2;
+			vl.Add( f.Vertex2 );
+
+			f.Vertex3.Position	= v3.Position;
+			f.Vertex3.UV		= v3.UV;
+			f.Vertex3.UVA1		= v3.UVA1;
+			f.Vertex3.UVA2		= v3.UVA2;
+			vl.Add( f.Vertex3 );
+			/*//ボーンウェイトを頂点１に合わせる（変形後も同じ方向へ動くように）
+
+			f.Vertex2.Normal=n;
+			f.Vertex3.Normal=n;
+
+			f.Vertex2.Bone1=f.Vertex3.Bone1=f.Vertex1.Bone1;
+			f.Vertex2.Bone2=f.Vertex3.Bone2=f.Vertex1.Bone2;
+			f.Vertex2.Bone3=f.Vertex3.Bone3=f.Vertex1.Bone3;
+			f.Vertex2.Bone4=f.Vertex3.Bone4=f.Vertex1.Bone4;
+
+			f.Vertex2.Weight1=f.Vertex3.Weight1=f.Vertex1.Weight1;
+			f.Vertex2.Weight2=f.Vertex3.Weight2=f.Vertex1.Weight2;
+			f.Vertex2.Weight3=f.Vertex3.Weight3=f.Vertex1.Weight3;
+			f.Vertex2.Weight4=f.Vertex3.Weight4=f.Vertex1.Weight4;*/
+		}
+		return vl;
+	}
+
+	float	InnerProduct( V3 a, V3 b ) {
+		return	a.X*b.X + a.Y*b.Y + a.Z*b.Z;
+	}
+
+	V3		OuterProduct( V3 a, V3 b ) {
+		return new V3(a.Y*b.Z-a.Z*b.Y, a.Z*b.X-a.X*b.Z, a.X*b.Y-a.Y*b.X);
+	}
+}
+
+public class FaceMorphOffset {
+	public V3	o1;
+	public V3	o2;
+	public V3	o3;
+}
+
+public class ExMorphOffset {
+	public IPXMorph	m;
+	public V3		offset;
+
+	public ExMorphOffset( IPXMorph m, V3 offset ) {
+		this.m		= m;
+		this.offset	= offset;
+	}
+}
+
+public class ExVertex{
+	public IPXVertex			v;
+	public IList&lt;ExMorphOffset&gt;	exm;
+
+	public ExVertex( IPXVertex v ) {
+		this.v		= v; 
+		this.exm	= new List&lt;ExMorphOffset&gt;();
+	}
+}
+
+</FullCodeText>
+  <CodeText>
+// Run()関数内の処理を記述
+// 外部クラスの活用などは一般形式のスクリプトコードを使用してください.
+
+// プラグイン変数は IPERunArgs args を通して取得可能
+// コードに自動的に追加されるヘッダ／フッタはメニューから有効化／確認が可能(ヘッダは標準で有効設定)
+
+
+</CodeText>
+  <CodeHeader>//
+// ---- 簡易編集用ヘッダコード ----
+
+// 常用接続変数一括登録
+
+// ホスト配下
+IPEPluginHost host = args.Host;
+IPEBuilder builder = host.Builder;
+IPEShortBuilder bd = host.Builder.SC;		// 短絡系ビルダ
+IPXPmxBuilder bdx = host.Builder.Pmx;		// PMXビルダ
+IPEConnector connect = host.Connector;
+IPEPMDViewConnector view = host.Connector.View.PMDView;
+
+// PMX関連
+
+IPXPmx pmx = connect.Pmx.GetCurrentState();     // PMX取得
+IPXHeader header = pmx.Header;                  // header   :ヘッダ
+IPXModelInfo info = pmx.ModelInfo;              // info     :モデル情報
+IList&lt;IPXVertex&gt; vertex = pmx.Vertex;           // vertex   :頂点   | リスト
+IList&lt;IPXMaterial&gt; material = pmx.Material;     // material :材質   | リスト
+IList&lt;IPXBone&gt; bone = pmx.Bone;                 // bone     :ボーン | リスト
+IList&lt;IPXMorph&gt; morph = pmx.Morph;				// morph    :モーフ | リスト
+IList&lt;IPXNode&gt; node = pmx.Node;					// node     :表示枠 | リスト
+IList&lt;IPXBody&gt; body = pmx.Body;                 // body     :剛体   | リスト
+IList&lt;IPXJoint&gt; joint = pmx.Joint;              // joint    :Joint  | リスト
+
+
+/*
+// PMD関連
+
+IPEPmd pmd = connect.Pmd.GetCurrentState();         // PMD取得
+// IPEXPmd pex = connect.Pmd.GetCurrentStateEx();       // 拡張PMDを使う場合はコメント解除(拡張用データへの接続変数は未登録)
+
+IPEHeader header = pmd.Header;                  // header   :ヘッダ
+IList&lt;IPEVertex&gt; vertex = pmd.Vertex;           // vertex   :頂点   | リスト
+IList&lt;int&gt; face = pmd.Face;                     // face     :面     | リスト
+IList&lt;IPEMaterial&gt; material = pmd.Material;     // material :材質   | リスト
+IList&lt;IPEBone&gt; bone = pmd.Bone;                 // bone     :ボーン | リスト
+IList&lt;IPEIK&gt; ik = pmd.IK;                       // ik       :IK     | リスト
+IList&lt;IPEExpression&gt; exp = pmd.Expression;      // exp      :表情   | リスト
+
+IList&lt;int&gt; frameExp = pmd.FrameExpression;      // frameExp :表情枠 | リスト
+IList&lt;IPEFrameBone&gt; frameBone = pmd.FrameBone;  // frameBone:ボーン表示枠 | リスト
+
+string[] toon = pmd.ToonName;                   // toon     :Toon   | 配列
+
+IList&lt;IPEBody&gt; body = pmd.Body;                 // body     :剛体   | リスト
+IList&lt;IPEJoint&gt; joint = pmd.Joint;              // joint    :Joint  | リスト
+*/
+
+</CodeHeader>
+  <CodeFooter>//
+// ---- 簡易編集用フッタコード ----
+
+// 更新処理
+// デフォルト設定ではフッタコードはOFF
+
+// PMX更新
+connect.Pmx.Update(pmx);
+
+/*
+// PMD更新
+connect.Pmd.Update(pmd);
+//connect.Pmd.UpdateEx(pex);
+*/
+
+// Form更新
+connect.Form.UpdateList(UpdateObject.All);  // 重い場合は引数を変更して個別に更新
+
+// PMDView更新
+connect.View.PMDView.UpdateModel();         // Viewの更新が不要な場合はコメントアウト
+connect.View.PMDView.UpdateView();
+
+
+</CodeFooter>
+  <EnableHeader>true</EnableHeader>
+  <EnableFooter>false</EnableFooter>
+  <ActivePages>0</ActivePages>
+</CSScriptData>

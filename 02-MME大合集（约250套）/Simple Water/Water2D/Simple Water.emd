@@ -1,0 +1,10 @@
+[Info]
+Version = 3
+
+[Effect]
+Obj = none
+Obj[0] = UVmove1.fx
+Obj[1] = UVmove2.fx
+Obj[2] = UVmove1L.fx
+Obj[3] = UVmove2L.fx
+

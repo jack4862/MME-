@@ -1,0 +1,196 @@
+float mSeaSpd : CONTROLOBJECT < string name = F2DC; string item = "さざ波速度"; >;
+
+//RayMMDよりWaterのコードをお借り
+const float waveHeightLow = 0.6;
+const float waveHeightHigh  = 0.5;
+
+const float waveLoopsLow = 0.6;
+const float waveLoopsHigh = 4.0;
+
+const float waveMapScaleLow = 1.0;
+
+const float2 waveMapLoopNumLow = 4.0;
+
+const float2 waveMapTranslate = float2(1, 1);
+
+
+
+texture WaveNoiseMap<string ResourceName = "Texture/noise.png";>; 
+sampler WaveNoiseMapSamp = sampler_state
+{
+	texture = WaveNoiseMap;
+	MINFILTER = LINEAR; MAGFILTER = LINEAR; MIPFILTER = LINEAR;
+	ADDRESSU = WRAP; ADDRESSV = WRAP;
+};
+texture WaveRippleMap<string ResourceName = "Texture/ripple.png";>; 
+sampler WaveRippleMapSamp = sampler_state
+{
+	MAXANISOTROPY = 16;
+	texture = WaveRippleMap;
+	MINFILTER = ANISOTROPIC; MAGFILTER = ANISOTROPIC; MIPFILTER = ANISOTROPIC;
+	ADDRESSU = WRAP; ADDRESSV = WRAP;
+};
+	
+float noise(float2 p)
+{
+	return tex2Dlod(WaveNoiseMapSamp, float4(p / 256.0, 0, 0)).x;
+}
+
+float fbm(float2 p) 
+{
+	float2x2 m2 = float2x2(1.6,-1.2,1.2,1.6);
+	float f = 0;
+	f += 0.5000 * noise( p ); p = mul(m2, p);
+	f += 0.2500 * noise( p ); p = mul(m2, p);
+	f += 0.1666 * noise( p );
+	return f;
+}
+float GetWaterHeightPure(float2 p,int loop)
+{
+	float2 shift1 = float2(0.32, 0.24) * time * mSeaSpd*2;
+	float2 shift2 = float2(0.38,-0.26) * time * mSeaSpd*2;
+	
+	float2 p2 = p * waveLoopsHigh;
+
+	float wave = 0;
+	wave += sin(dot(p2, 0.622) + shift2.x * 4.269);
+	wave *= fbm(p);
+	wave *= waveHeightHigh;
+
+	p *= waveLoopsLow;
+
+	float f = 0;
+	float s = 0.5;
+	float amp = 1.0;
+	float2x2 m = float2x2(0.72, -1.60,  1.60, 0.72);
+
+	for (int i = 0; i < loop; i++)
+	{
+		p = mul(m, p) * 0.947; 
+		f -= amp * abs(sin((noise(p + shift1 * s) - 0.5) * 2.0)); 
+		amp = amp * 0.59;
+		s *= -1.329;
+	}
+
+	return (wave+f);
+}
+float GetWaterHeight(float2 p,int loop)
+{
+	float2 shift1 = float2(0.32, 0.24) * time * mSeaSpd*2;
+	float2 shift2 = float2(0.38,-0.26) * time * mSeaSpd*2;
+	
+	float2 p2 = p * waveLoopsHigh;
+
+	float wave = 0;
+	wave += sin(dot(p2, 0.622) + shift2.x * 4.269);
+	wave *= fbm(p);
+	wave *= waveHeightHigh;
+
+	p *= waveLoopsLow;
+
+	float f = 0;
+	float s = 0.5;
+	float amp = 1.0;
+	float2x2 m = float2x2(0.72, -1.60,  1.60, 0.72);
+
+	for (int i = 0; i < loop; i++)
+	{
+		p = mul(m, p) * 0.947; 
+		f -= amp * abs(sin((noise(p + shift1 * s) - 0.5) * 2.0)); 
+		amp = amp * 0.59;
+		s *= -1.329;
+	}
+
+	return (wave + f * waveHeightLow)*SEA_HEIGHT;
+}
+
+float4 GenWaterNormal(float2 coord,int loop)
+{
+	float2 dif = float2(0, 0.01);
+
+	float h0 = GetWaterHeight(coord * 15,loop);
+	float h1 = GetWaterHeight(coord * 15 - dif,loop);
+	float h2 = GetWaterHeight(coord * 15 + dif,loop);
+	float h3 = GetWaterHeight(coord * 15 - dif.yx,loop);
+	float h4 = GetWaterHeight(coord * 15 + dif.yx,loop);
+
+	float3 bumpNormal = normalize(float3(h3 - h4, h1 - h2, 0.15));
+	return float4(bumpNormal, h0);
+}
+float2 GetParalaxOffset(float2 coord, float3 V,int loop)
+{
+	const float gradientScale = 0.5 * 0.01;
+	const float heightScale   = 0.5 * 0.01;
+
+	float4 height = GenWaterNormal(coord,loop);
+	height.xy = gradientScale * height.xy;
+	height.w  = heightScale   * height.w;
+
+	float2 paralaxOffset = V.xy * height.w + height.xy;
+	return paralaxOffset;
+}
+float3 ComputeTangentBinormalNormal(float3 N, float3 P, float2 coord, float3 tangentNormal)
+{
+	float3 dp1 = ddx(P);
+	float3 dp2 = ddy(P);
+	float2 duv1 = ddx(coord);
+	float2 duv2 = ddy(coord);
+
+	float3x3 M = float3x3(dp1, dp2, N);
+	float2x3 I = float2x3(cross(M[1], M[2]), cross(M[2], M[0]));
+	float3 T = mul(float2(duv1.x, duv2.x), I);
+	float3 B = mul(float2(duv1.y, duv2.y), I);
+
+	float scaleT = 1.0f / (dot(T, T) + 1e-6);
+	float scaleB = 1.0f / (dot(B, B) + 1e-6);
+
+	float3x3 tbnTransform;
+	tbnTransform[0] = normalize(T * scaleT);
+	tbnTransform[1] = normalize(B * scaleB);
+	tbnTransform[2] = N;
+
+	return normalize(mul(tangentNormal, tbnTransform));
+}
+float GetWaveHeight(float2 coord, float3 N, float3 V, float3 P,int loop)
+{
+	coord *= SeaScale;
+	float3 bumpNormal = 0;
+
+	float4 wave = coord.xyxy * waveMapLoopNumLow.xyxy;
+	wave *= float4(1, 1, 2, 2);
+
+	float2 paralaxOffset = GetParalaxOffset(wave.xy, V,loop);
+
+	bumpNormal = GenWaterNormal(wave.xy + paralaxOffset.xy,loop).xyz;
+	bumpNormal.xy *= waveMapScaleLow;
+
+
+	#if WAVE_RIPPLE_MAP_ENABLE
+		float4 ripple = coord.xyxy * rippleMapLoopNumLow.xyxy;
+		bumpNormal.xy += tex2D(WaveRippleMapSamp, ripple.xy).xy;
+	#endif
+
+	return (bumpNormal).x;
+}
+
+float3 GetWaveNormal(float2 coord, float3 N, float3 V, float3 P,int loop)
+{
+	coord *= SeaScale;
+	float3 bumpNormal = 0;
+
+	float4 wave = coord.xyxy * waveMapLoopNumLow.xyxy;
+	wave *= float4(1, 1, 2, 2);
+
+	float2 paralaxOffset = GetParalaxOffset(wave.xy, V,loop);
+
+	bumpNormal = GenWaterNormal(wave.xy + paralaxOffset.xy,loop).xyz;
+	bumpNormal.xy *= waveMapScaleLow;
+
+
+	#if WAVE_RIPPLE_MAP_ENABLE
+		float4 ripple = coord.xyxy * rippleMapLoopNumLow.xyxy;
+		bumpNormal.xy += tex2D(WaveRippleMapSamp, ripple.xy).xy;
+	#endif
+
+	return ComputeTangentBinormalNormal(N, P, coord, bumpNormal);
+}

@@ -1,0 +1,1789 @@
+//テクスチャ名
+#define TEXNAME "Texture/WaterParticle.png"
+
+//テクスチャ分割数
+#define TEXSPLIT 2
+
+// ソートを有効にするなら1
+// 必要なかったり比較してみたいときは0
+#define SORT_ENABLE 1
+
+// パーティクルの最大表示数、最大で65536
+// 4096,16384を超えるとソート処理の関係で段階的に重くなるので注意
+#define PARTICLE_COUNT (65536)
+
+// 色(テクスチャの色に乗算)
+static float4 ParticleColor = float4(1-mR,1-mG,1-mB,1);
+
+// 加算色(RGB)
+//左：生成時
+//右：寿命時
+float3 AddColorByLife[2] = { float3(0,0,0),float3(0,0,0)};
+//色変化速度
+float AddColorPower = 5;
+//法線＆視点による加算の抑制
+float AddColorEyeAddjust = 1;
+
+//パーティクル出易さ
+static float CoefProbable = 1*mCoef;
+
+//発射速度最大値
+float ShotSpd = 0.1;
+//発射速度ランダム減算値
+float RndSpd = 0.001;
+
+//発射時ランダム角度(1.0で360度発射)
+float ShotRand = 0.1;
+//ランダム発射角度ゆらぎ量
+float RndShotYuragi = 0.1;
+//ランダム発射角度ゆらぎ速度
+float RndShotYuragiSpd = 10;
+
+//生成箇所ランダム量XYZ
+float3 PosRand = float3(0,0,0);
+
+//寿命最大値
+float Life = 2;
+
+//寿命ランダム減算値
+float RndLife = 2;
+
+//重力
+float3 Grv = float3(0,0.05,0);
+
+//反射時の減衰
+float3 CollisionDrag = float3(1,1,1)*0.25;
+//反射時の寿命減衰（0で無効 1.0で即消滅)
+float CollisionLifeDown = 0;
+
+//球接触時のランダム角度変更量
+float CollisionRandSp = 0.25;
+
+//板接触時のランダム角度偏向量
+float CollisionRandPl = 0.25;
+
+//スクリーン接触時のランダム角度偏向量
+float CollisionRandSS = 0.1;
+
+//よりそい度
+float Attract = 0;
+
+
+//空気抵抗
+float AirDrag = 0.98;
+
+//ランダムゆらぎ量
+float RndYuragi = 0;
+
+//太さ基準値
+static float Scale = 1+mScale*10;//0.25;
+//大きさランダム減算
+float RndScale = 0.75;
+
+//左：生成時の大きさ
+//右：寿命時の大きさ
+float ScaleByLife[2] = {1,0.25};
+
+//大きさ変化速度
+float ScalePower = 8;
+
+//点滅量(0で点滅しない。1が最大）
+float Flick = 0;
+//点滅速度
+float FlickSpd = 1.0;
+
+// 当たり判定
+#define SSBOUNCE	1		// 当たり判定を有効にする
+float BounceFactor = 1;		// 衝突時の跳ね返り率。0～1
+float FrictionFactor = 1;		// 衝突時の減速率。1で減速しない。
+float IgnoreDpethOffset = 100.0;		// 表面よりこれ以上後のパーティクルは衝突を無視する
+
+
+// (風等の)空間の流速場を定義する関数
+// 粒子位置ParticlePosにおける空気の流れを記述します。
+// 戻り値が0以外の時はオブジェクトが動かなくても粒子を放出します。
+// 速度抵抗係数がResistFactor>0でないと粒子の動きに影響を与えません。
+float3 VelocityField(float3 ParticlePos)
+{
+   float3 vel = float3( 0.0, 0.0, 0.0 );
+   return vel;
+}
+//================================================================================================//
+
+//Z_Particleメインコード
+
+
+#include "function/rotate.fxsub"
+
+
+#define PLMODEL1 "Z_Particle_PointLight1.pmx"
+#define PLMODEL2 "Z_Particle_PointLight2.pmx"
+#define PLMODEL3 "Z_Particle_PointLight3.pmx"
+
+float morph_r1 : CONTROLOBJECT < string name = PLMODEL1; string item = "赤"; >;
+float morph_g1 : CONTROLOBJECT < string name = PLMODEL1; string item = "緑"; >;
+float morph_b1 : CONTROLOBJECT < string name = PLMODEL1; string item = "青"; >;
+float morph_light1 : CONTROLOBJECT < string name = PLMODEL1; string item = "光量"; >;
+float morph_size1 : CONTROLOBJECT < string name = PLMODEL1; string item = "範囲拡大"; >;
+float4x4 LightMat1 : CONTROLOBJECT < string name = PLMODEL1; string item = "センター"; >;
+bool bLight1 : CONTROLOBJECT < string name = PLMODEL1; >;
+
+float morph_r2 : CONTROLOBJECT < string name = PLMODEL2; string item = "赤"; >;
+float morph_g2 : CONTROLOBJECT < string name = PLMODEL2; string item = "緑"; >;
+float morph_b2 : CONTROLOBJECT < string name = PLMODEL2; string item = "青"; >;
+float morph_light2 : CONTROLOBJECT < string name = PLMODEL2; string item = "光量"; >;
+float morph_size2 : CONTROLOBJECT < string name = PLMODEL2; string item = "範囲拡大"; >;
+float4x4 LightMat2 : CONTROLOBJECT < string name = PLMODEL2; string item = "センター"; >;
+bool bLight2 : CONTROLOBJECT < string name = PLMODEL2; >;
+
+float morph_r3 : CONTROLOBJECT < string name = PLMODEL3; string item = "赤"; >;
+float morph_g3 : CONTROLOBJECT < string name = PLMODEL3; string item = "緑"; >;
+float morph_b3 : CONTROLOBJECT < string name = PLMODEL3; string item = "青"; >;
+float morph_light3 : CONTROLOBJECT < string name = PLMODEL3; string item = "光量"; >;
+float morph_size3 : CONTROLOBJECT < string name = PLMODEL3; string item = "範囲拡大"; >;
+float4x4 LightMat3 : CONTROLOBJECT < string name = PLMODEL3; string item = "センター"; >;
+bool bLight3 : CONTROLOBJECT < string name = PLMODEL3; >;
+
+
+static float CREATESIZE = 1000 * mAreaSize;
+
+//水面のワールド行列
+float4x4 WaterWorldMatrix : CONTROLOBJECT < string name = "fluid2D.x";>;
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// スクリーン当たり判定
+#if defined(SSBOUNCE) && SSBOUNCE > 0
+
+	// 法線マップ
+	shared texture LPNormalMapRT: OFFSCREENRENDERTARGET <
+		string Description = "SSBounce";
+		float2 ViewPortRatio = {1, 1};
+		string Format = "D3DFMT_A32B32G32R32F";		// RGBに法線。Aには深度情報
+		int Miplevels = 1;
+		bool AntiAlias = false;
+		float4 ClearColor = { 0.0, 0.0, 0.0, 0.0};
+		float ClearDepth = 1.0;
+		string DefaultEffect = 
+			"self = hide;"
+			"* = function/NormalAndDepths.fx;";
+	>;
+
+
+	sampler NormalMap = sampler_state {
+		texture = <LPNormalMapRT>;
+		AddressU  = CLAMP;
+		AddressV = CLAMP;
+		MinFilter = POINT;
+		MagFilter = POINT;
+		MipFilter = LINEAR;
+	};
+
+	inline void GetND(float2 Tex, out float3 N, out float Depth)
+	{
+		float4 ND = tex2Dlod( NormalMap,float4(Tex,0,1) );
+		N = normalize(ND.xyz);
+		Depth = ND.w;
+	}
+
+#endif
+
+// パラメータ宣言
+
+#if(PARTICLE_COUNT>65536)
+	#error パーティクルの上限をオーバーしています！
+#elif(PARTICLE_COUNT>16384)
+	#define TEX_SIZE 256
+#elif(PARTICLE_COUNT>4096)
+	#define TEX_SIZE 128
+#else
+	#define TEX_SIZE 64
+#endif
+
+int count = PARTICLE_COUNT;
+
+
+float3 LightAmbient : AMBIENT < string Object = "Light"; >;
+float3   LightSpecular     : SPECULAR  < string Object = "Light"; >;
+float3 CameraPosition	: POSITION  < string Object = "Camera"; >;
+float3 LightDirection	: DIRECTION < string Object = "Light"; >;
+
+
+//------------------------------------------------------------------------------------------------//
+// カメラのパラメータ
+
+// 座法変換行列
+float4x4 ViewMatrix		: VIEW;
+float4x4 WorldViewMatrix		: WORLDVIEW;
+float4x4 ViewProjMatrix				: VIEWPROJECTION;
+float4x4 ProjMatrix				: PROJECTION;
+float4x4 WorldMatrix : WORLD;
+float4x4 LightWorldViewProjMatrix : WORLDVIEWPROJECTION < string Object = "Light"; >;
+
+
+//ヒットスフィア
+bool bHitSphere0 : CONTROLOBJECT < string name = "HitSphere0.x";>;
+float4x4 HitSpPos0 : CONTROLOBJECT < string name = "HitSphere0.x";>;
+float HitSpScale0 : CONTROLOBJECT < string name = "HitSphere0.x";>;
+bool bHitSphere1 : CONTROLOBJECT < string name = "HitSphere1.x";>;
+float4x4 HitSpPos1 : CONTROLOBJECT < string name = "HitSphere1.x";>;
+float HitSpScale1 : CONTROLOBJECT < string name = "HitSphere1.x";>;
+bool bHitSphere2 : CONTROLOBJECT < string name = "HitSphere2.x";>;
+float4x4 HitSpPos2 : CONTROLOBJECT < string name = "HitSphere2.x";>;
+float HitSpScale2 : CONTROLOBJECT < string name = "HitSphere2.x";>;
+
+//ウィンドスフィア
+bool bWindSphere0 : CONTROLOBJECT < string name = "WindSphere0.x";>;
+float4x4 WindSpPos0 : CONTROLOBJECT < string name = "WindSphere0.x";>;
+float WindSpScale0 : CONTROLOBJECT < string name = "WindSphere0.x";>;
+float WindSpRx0 : CONTROLOBJECT < string name = "WindSphere0.x"; string item = "Rx"; >;
+float WindSpRy0 : CONTROLOBJECT < string name = "WindSphere0.x"; string item = "Ry"; >;
+float WindSpRz0 : CONTROLOBJECT < string name = "WindSphere0.x"; string item = "Rz"; >;
+bool bWindSphere1 : CONTROLOBJECT < string name = "WindSphere1.x";>;
+float4x4 WindSpPos1 : CONTROLOBJECT < string name = "WindSphere1.x";>;
+float WindSpScale1 : CONTROLOBJECT < string name = "WindSphere1.x";>;
+float WindSpRx1 : CONTROLOBJECT < string name = "WindSphere1.x"; string item = "Rx"; >;
+float WindSpRy1 : CONTROLOBJECT < string name = "WindSphere1.x"; string item = "Ry"; >;
+float WindSpRz1 : CONTROLOBJECT < string name = "WindSphere1.x"; string item = "Rz"; >;
+bool bWindSphere2 : CONTROLOBJECT < string name = "WindSphere2.x";>;
+float4x4 WindSpPos2 : CONTROLOBJECT < string name = "WindSphere2.x";>;
+float WindSpScale2 : CONTROLOBJECT < string name = "WindSphere2.x";>;
+float WindSpRx2 : CONTROLOBJECT < string name = "WindSphere2.x"; string item = "Rx"; >;
+float WindSpRy2 : CONTROLOBJECT < string name = "WindSphere2.x"; string item = "Ry"; >;
+float WindSpRz2 : CONTROLOBJECT < string name = "WindSphere2.x"; string item = "Rz"; >;
+
+//ヒットプレーン
+bool bHitPlane0 : CONTROLOBJECT < string name = "HitPlane0.x";>;
+float4x4 HitPlMat0 : CONTROLOBJECT < string name = "HitPlane0.x";>;
+float HitPlScale0 : CONTROLOBJECT < string name = "HitPlane0.x";>;
+bool bHitPlane1 : CONTROLOBJECT < string name = "HitPlane1.x";>;
+float4x4 HitPlMat1 : CONTROLOBJECT < string name = "HitPlane1.x";>;
+float HitPlScale1 : CONTROLOBJECT < string name = "HitPlane1.x";>;
+bool bHitPlane2 : CONTROLOBJECT < string name = "HitPlane2.x";>;
+float4x4 HitPlMat2 : CONTROLOBJECT < string name = "HitPlane2.x";>;
+float HitPlScale2 : CONTROLOBJECT < string name = "HitPlane2.x";>;
+
+//------------------------------------------------------------------------------------------------//
+// テクスチャとサンプラ
+
+texture BaseTex< string ResourceName = TEXNAME; >;
+sampler BaseSamp = sampler_state {
+	texture = <BaseTex>;
+	MINFILTER = ANISOTROPIC;
+	MAGFILTER = ANISOTROPIC;
+	MIPFILTER = LINEAR;
+	MAXANISOTROPY = 16;
+	AddressU = WRAP;
+	AddressV = WRAP;
+};
+
+//乱数テクスチャ
+texture2D rndtex < string ResourceName = "function/random256x256.bmp"; >;
+sampler rnd = sampler_state {
+	texture = <rndtex>;
+	FILTER = NONE;
+};
+sampler rnd_linear = sampler_state {
+	texture = <rndtex>;
+	FILTER = LINEAR;
+};
+
+//水面のデータ保持用テクスチャ
+shared texture BufTex : RenderColorTarget;
+sampler BufSamp = sampler_state
+{
+	Texture = <BufTex>;
+    Filter = LINEAR;
+    AddressU = CLAMP;
+    AddressV = CLAMP;
+};
+
+
+//乱数テクスチャサイズ
+#define RNDTEX_WIDTH  256
+#define RNDTEX_HEIGHT 256
+
+//乱数取得
+float4 getRandom(float rindex)
+{
+	float2 tpos = float2(rindex % RNDTEX_WIDTH, trunc(rindex / RNDTEX_WIDTH));
+	tpos += float2(0.5,0.5);
+	tpos /= float2(RNDTEX_WIDTH, RNDTEX_HEIGHT);
+	return tex2Dlod(rnd, float4(tpos,0,1));
+}
+float4 getRandomLinear(float rindex)
+{
+	float2 tpos = float2(rindex % RNDTEX_WIDTH, trunc(rindex / RNDTEX_WIDTH));
+	tpos += float2(0.5,0.5);
+	tpos /= float2(RNDTEX_WIDTH, RNDTEX_HEIGHT);
+	return tex2Dlod(rnd_linear, float4(tpos,0,1));
+}
+//ソフトパーティクルエンジン用深度テクスチャ
+shared texture2D SPE_DepthTex : RENDERCOLORTARGET;
+sampler2D SPE_DepthSamp = sampler_state {
+	texture = <SPE_DepthTex>;
+	MinFilter = LINEAR;
+	MagFilter = LINEAR;
+	MipFilter = NONE;
+	AddressU  = CLAMP;
+	AddressV = CLAMP;
+};
+
+// パーティクルのビュー座標と透明度を保存するテクスチャ
+texture2D ParticleDataTex : RENDERCOLORTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "A32B32G32R32F";
+>;
+sampler2D ParticleDataSamp = sampler_state {
+	texture = <ParticleDataTex>;
+	Filter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+// パーティクル座標を保存するテクスチャ
+texture2D ParticlePosTex : RENDERCOLORTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "A32B32G32R32F";
+>;
+sampler2D ParticlePosSamp = sampler_state {
+	texture = <ParticlePosTex>;
+	Filter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+// パーティクル速度と寿命を保存するテクスチャ
+texture2D ParticleVecTex : RENDERCOLORTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "A32B32G32R32F";
+>;
+sampler2D ParticleVecSamp = sampler_state {
+	texture = <ParticleVecTex>;
+	Filter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture2D Ptcl_DepthBuffer : RENDERDEPTHSTENCILTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "D24S8";
+>;
+
+//厚み情報を保存するテクスチャ
+texture2D CloudMap : RENDERCOLORTARGET <
+    float2 ViewPortRatio = {1.0,1.0};
+    string Format = "R32F" ;
+>;
+sampler2D CloudSamp = sampler_state {
+	texture = <CloudMap>;
+	Filter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+// オブジェクトのワールド座標記録用
+texture WorldCoord0 : RENDERCOLORTARGET
+<
+   int Width=1;
+   int Height=1;
+   string Format="A32B32G32R32F";
+>;
+texture WorldCoord1 : RENDERCOLORTARGET
+<
+   int Width=1;
+   int Height=1;
+   string Format="A32B32G32R32F";
+>;
+texture WorldCoord2 : RENDERCOLORTARGET
+<
+   int Width=1;
+   int Height=1;
+   string Format="A32B32G32R32F";
+>;
+texture WorldCoord3 : RENDERCOLORTARGET
+<
+   int Width=1;
+   int Height=1;
+   string Format="A32B32G32R32F";
+>;
+sampler WorldCoordSmp0 = sampler_state
+{
+   Texture = <WorldCoord0>;
+   AddressU  = CLAMP;
+   AddressV = CLAMP;
+   MinFilter = NONE;
+   MagFilter = NONE;
+   MipFilter = NONE;
+};
+sampler WorldCoordSmp1 = sampler_state
+{
+   Texture = <WorldCoord1>;
+   AddressU  = CLAMP;
+   AddressV = CLAMP;
+   MinFilter = NONE;
+   MagFilter = NONE;
+   MipFilter = NONE;
+};
+sampler WorldCoordSmp2 = sampler_state
+{
+   Texture = <WorldCoord2>;
+   AddressU  = CLAMP;
+   AddressV = CLAMP;
+   MinFilter = NONE;
+   MagFilter = NONE;
+   MipFilter = NONE;
+};
+sampler WorldCoordSmp3 = sampler_state
+{
+   Texture = <WorldCoord3>;
+   AddressU  = CLAMP;
+   AddressV = CLAMP;
+   MinFilter = NONE;
+   MagFilter = NONE;
+   MipFilter = NONE;
+};
+//風球の座標保持テクスチャ
+texture WindPosTex : RENDERCOLORTARGET
+<
+   int Width=2;
+   int Height=2;
+   string Format="A32B32G32R32F";
+>;
+sampler WindPosSamp = sampler_state
+{
+   Texture = <WindPosTex>;
+   AddressU  = CLAMP;
+   AddressV = CLAMP;
+   MinFilter = NONE;
+   MagFilter = NONE;
+   MipFilter = NONE;
+};
+
+texture WindDepthsBuffer : RenderDepthStencilTarget <
+   int Width=2;
+   int Height=2;
+    string Format = "D24S8";
+>;
+texture WorldCoordDepthBuffer : RenderDepthStencilTarget <
+   int Width=1;
+   int Height=1;
+    string Format = "D24S8";
+>;
+
+texture2D DepthBuffer : RENDERDEPTHSTENCILTARGET <
+    float2 ViewPortRatio = {1.0,1.0};
+    string Format = "D24S8";
+>;
+// ------------------------------------------------ //
+// バイトニックソート処理用のテクスチャ
+texture2D SortTex : RENDERCOLORTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "G32R32F";
+>;
+sampler2D SortSamp = sampler_state {
+	texture = <SortTex>;
+	Filter = NONE;
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture2D SortTexSub : RENDERCOLORTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "G32R32F";
+>;
+sampler2D SortSampSub = sampler_state {
+	texture = <SortTexSub>;
+	Filter = NONE;	
+	AddressU = CLAMP; AddressV = CLAMP;
+};
+
+texture2D Sort_DepthBuffer : RENDERDEPTHSTENCILTARGET <
+	int2 Dimensions = {TEX_SIZE, TEX_SIZE};
+	string Format = "D24S8";
+>;
+// ------------------------------------------------ //
+
+
+//------------------------------------------------------------------------------------------------//
+// ソフトパーティクルエンジンのパラメータ
+
+//ソフトパーティクルエンジン使用フラグ
+bool use_spe : CONTROLOBJECT < string name = "SoftParticleEngine.x"; >;
+
+
+//------------------------------------------------------------------------------------------------//
+// バイトニックソートに関するパラメータ
+
+
+//------------------------------------------------------------------------------------------------//
+// その他のパラメータ・関数
+
+float time : TIME; //経過時間
+float elapsed_time : ELAPSEDTIME;
+static float Dt = (elapsed_time < 0.2f) ? clamp(elapsed_time, 0.001f, 1.0f/15.0f) : 1.0f/30.0f;
+
+float Tr : CONTROLOBJECT < string name = "(self)"; string item = "Tr"; >;
+float Si : CONTROLOBJECT < string name = "(self)"; string item = "Si"; >;
+
+float Script : STANDARDSGLOBAL <
+	string ScriptOutput = "color";
+	string ScriptClass = "sceneorobject";
+	string ScriptOrder = "standard";
+> = 0.8;
+
+// パーティクルの座標と透明度を決定
+float4 EffectPosColor(int id)
+{
+	float3 Pos;
+
+	float index = id;
+
+	// ランダム配置
+	float4 base_pos = getRandom(index) - 0.5;
+
+	// 透明度を計算
+	float alpha = 1;
+	
+	return float4(base_pos.xyz,alpha);
+}
+
+// テクスチャ座標からインデックスを求める
+int TexToIndex(float2 tex, int size, float offset){
+	int index = (int)round(tex.x*size-offset)+(int)round(tex.y*size-offset)*size;
+	return index;
+}
+
+// インデックスからテクスチャ座標を求める
+float2 IndexToTex(int index, int size, float offset){
+	float2 tex;
+	tex.x = (index%size+offset)/size;
+	tex.y = (index/size+offset)/size;
+	return tex;
+}
+
+
+//================================================================================================//
+// 描画システム
+
+//------------------------------------------------------------------------------------------------//
+// パーティクルのビュー座標計算 & バイトニックソート用テクスチャに書き込み
+
+/* 頂点シェーダー用の構造体 */
+struct TEX_VS_OUTPUT
+{
+	float4 Pos : POSITION;	// 頂点座標
+	float2 Tex : TEXCOORD0;	// テクスチャ座標
+};
+
+/* 頂点シェーダー */
+TEX_VS_OUTPUT TexMain_VS(float4 Pos : POSITION, float2 Tex : TEXCOORD0)
+{
+	TEX_VS_OUTPUT Out = (TEX_VS_OUTPUT)0;
+	Out.Pos = Pos;
+	Out.Tex = Tex.xy + float2(0.5,0.5)/TEX_SIZE;
+	
+	return Out;
+}
+
+/* ピクセルシェーダー用の構造体 */
+struct TEX_PS_OUTPUT
+{
+	float4 PtclPos	: Color0;	// ビュー座標 & 透明度
+	float4 Depth	: Color1;	// 深度 & インデックス
+	float4 Pos		: Color2;	// 座標
+	float4 Vec		: Color3;	// 速度&寿命
+};
+struct HITOBJ
+{
+	int HitType;
+	float3 HitPos;
+	float3 HitVec;
+};
+#define NOHIT -1
+#define HIT_PLANE 0
+#define HIT_SPHERE 1
+#define HIT_SCREEN 2
+
+//当たり判定関数
+HITOBJ Collision(float3 p1,float3 vec,int index,float s)
+{
+	HITOBJ Out = (HITOBJ)0;
+	bool bEnd = false;
+	Out.HitType = NOHIT;
+	
+	//球体との判定
+	float3 SpPos[3] = {HitSpPos0[3].xyz,HitSpPos1[3].xyz,HitSpPos2[3].xyz};
+	float SpSi[3] = {HitSpScale0,HitSpScale1,HitSpScale2};
+	bool bHitSphere[3] = {bHitSphere0,bHitSphere1,bHitSphere2};
+	for(int i=0;i<3;i++)
+	{
+		if(!bHitSphere[i]) continue;
+	
+		float3 HitPos = SpPos[i];
+		float HitScale = SpSi[i];
+				
+		float3 vA = p1 - HitPos;
+		float r = HitScale*(0.26 + lerp(0,0.01,Attract));
+		
+		if(length(length(vA) < r))
+		{
+			
+			Out.HitVec = vA;
+			
+			float4 ReflectRnd = getRandom(index*67.891+time);
+			//Out.HitVec.xyz = RotX_vec(Out.HitVec.xyz,ReflectRnd.x * 3.1415 * CollisionRandSp / 180.0);
+			//Out.HitVec.xyz = RotY_vec(Out.HitVec.xyz,ReflectRnd.y*2*3.1415);
+			
+			Out.HitPos = HitPos+normalize(vA)*r;
+			Out.HitType = HIT_SPHERE;
+			bEnd = true;
+			//return Out;
+			break;
+		}
+	}
+	
+	if(!bEnd)
+	{
+		//板との判定
+		float4x4 PlMat[3] = {HitPlMat0,HitPlMat1,HitPlMat2};
+		float PlSi[3] = {HitPlScale0,HitPlScale1,HitPlScale2};
+		bool bHitPlane[3] = {bHitPlane0,bHitPlane1,bHitPlane2};
+		for(int i=0;i<3;i++)
+		{
+			if(!bHitPlane[i]) continue;
+		
+			float HitScale = PlSi[i];
+					
+			float3 P1 = p1;
+			float3 P2 = P1 + vec;
+			float3 N = normalize(PlMat[i][1]);
+			
+			float3 P0 = PlMat[i][3];
+			float3 v1 = (P1 - P0);
+			float3 v2 = (P2 - P0);
+			//P0から板までの距離
+			float d1 = abs(dot(N,v1)) / abs(N);
+			float d2 = abs(dot(N,v2)) / abs(N);
+			float a = d1 / (d1+d2);
+			float3 v3 = (1-a)*v1 + a*v2;
+			
+			if(dot(v1,N) * dot(v2,N) <= 0)
+			{
+			
+				Out.HitPos = PlMat[i][3]+v3+N*0;
+				Out.HitVec = N;
+				
+					
+				//板ポリの各頂点
+				float S = 1;
+
+				float3 Pl0 = mul(float4(-1,0, 1,1)*S,PlMat[i]).xyz;
+				float3 Pl1 = mul(float4(-1,0,-1,1)*S,PlMat[i]).xyz;
+				float3 Pl2 = mul(float4( 1,0,-1,1)*S,PlMat[i]).xyz;
+				float3 Pl3 = mul(float4( 1,0, 1,1)*S,PlMat[i]).xyz;
+				
+				float3 v00 = normalize(Pl1 - Pl0);
+				float3 v10 = normalize(Out.HitPos-Pl1);
+
+				float3 v01 = normalize(Pl2 - Pl1);
+				float3 v11 = normalize(Out.HitPos-Pl2);
+				
+				float3 v02 = normalize(Pl3 - Pl2);
+				float3 v12 = normalize(Out.HitPos-Pl3);
+
+				float3 v03 = normalize(Pl0 - Pl3);
+				float3 v13 = normalize(Out.HitPos-Pl3);
+				
+				if(dot(cross(v10,v00),N) >= 0 &&
+				   dot(cross(v11,v01),N) >= 0 &&
+				   dot(cross(v12,v02),N) >= 0 &&
+				   dot(cross(v13,v03),N) >= 0)
+				{
+					Out.HitType = HIT_PLANE;
+					Out.HitVec = N*1;
+
+					float4 ReflectRnd = getRandom(index*67.891+time);
+					
+					
+					float3 ReflectN = float3(0,1,0);
+					ReflectN = RotX_vec(ReflectN,ReflectRnd.x*saturate(length(vec*1))*CollisionRandPl);
+					ReflectN = RotY_vec(ReflectN,ReflectRnd.y*2*3.1415);
+					ReflectN = mul(ReflectN,(float3x3)PlMat[i]);
+					
+					Out.HitVec.xyz = normalize(ReflectN);
+					/*
+					Out.HitVec.xyz = RotX_vec(Out.HitVec.xyz,ReflectRnd.x * 3.1415 * CollisionRandPl / 180.0);
+					Out.HitVec.xyz = RotY_vec(Out.HitVec.xyz,ReflectRnd.y*2*3.1415);
+					*/
+					bEnd = true;
+					//return Out;
+					break;
+				}
+				
+			}		
+		}
+	}
+	//スクリーンでの当たり判定（お借りしたコード：ikParticle.fx）
+	#if defined(SSBOUNCE) && SSBOUNCE > 0
+	if(!bEnd)
+	{
+		// 簡単な交差判定
+		float4 ppos = mul(float4(p1.xyz,1), ViewProjMatrix );
+		float dist = length(p1.xyz - CameraPosition);
+		float2 Tex2 = (1.0 + ppos.xy * float2(1, -1) / ppos.w) * 0.5;
+		float3 SS_N;
+		float Depth;
+		GetND(Tex2, SS_N, Depth);
+		float dotVN = dot(vec.xyz, SS_N);
+		//dist += s*100;
+		if (dotVN < 0.0 && Depth < dist && dist < Depth + IgnoreDpethOffset)
+		{
+			Out.HitType = HIT_SCREEN;
+			Out.HitVec = SS_N;
+			Out.HitPos = p1;
+			bEnd = true;
+			//Vel.xyz = (Vel.xyz - N * (dotVN * (1 + BounceFactor))) * FrictionFactor;
+		}
+	}
+	#endif
+	
+	if(!bEnd)
+	{
+		Out.HitType = NOHIT;
+	}
+	return Out;
+}
+
+
+float3 GetWindPos(int id)
+{
+	float2 tex;
+	if(id == 0) tex = float2(0,0);
+	if(id == 1) tex = float2(1,0);
+	if(id == 2) tex = float2(0,1);
+	
+	return tex2D(WindPosSamp,tex).rgb;
+}
+//風球による速度変化
+float3 WindAccel(float3 nowpos,float3 nowvec)
+{
+	float4x4 WSPos[3] = {WindSpPos0,WindSpPos1,WindSpPos2};
+	float WSSi[3] = {WindSpScale0,WindSpScale1,WindSpScale2};
+	bool bWS[3] = {bWindSphere0,bWindSphere1,bWindSphere2};
+	float3 WSRot[3] = {
+	float3(WindSpRx0,WindSpRy0,WindSpRz0),
+	float3(WindSpRx1,WindSpRy1,WindSpRz1),
+	float3(WindSpRx2,WindSpRy2,WindSpRz2)};
+	
+	float3 Out = float3(0,0,0);
+	
+	for(int i=0;i<3;i++)
+	{
+		if(bWS[i])
+		{
+			float3 WindVec = WSPos[i][3].xyz - GetWindPos(i);
+			float3 vA = WSPos[i][3].xyz - nowpos;
+			float r = WSSi[i]*(0.26);
+			
+			if((length(vA) < r))
+			{
+				float3 c = cross(normalize(vA),float3(0,1,0));
+				float w = r / length(vA);
+				
+				Out = (-lerp(normalize(c),normalize(vA),0.5)*saturate(r));
+				break;
+				//return nowvec+WindVec*0.1;
+			}
+		}
+	}
+
+	return float3(0,0,0);
+}
+
+//CURL NOIZE
+
+#define	DECL_RAND( type, name )																	\
+type	name( type n ) {																		\
+	type a = frac( n*(1.0/8192) )-0.5;															\
+	type s = a * (6.182785114200511 + a*a * (-38.026512460676566 + a*a * 53.392573080032137));	\
+	type t = frac( s * 43758.5453 );															\
+	return	t;																					\
+}
+
+DECL_RAND( float, hash )
+DECL_RAND( float2, hash )
+DECL_RAND( float3, hash )
+DECL_RAND( float4, hash )
+
+
+float	noise( float3 x )	{
+	const static
+	float3	st	= float3( 1, 15, 255 );
+	const static
+	float4	o0	= float4(	dot( st, float3(0,0,0) ),
+							dot( st, float3(0,1,0) ),
+							dot( st, float3(0,0,1) ),
+							dot( st, float3(0,1,1) ) );
+	const static
+	float4	o1	= float4(	dot( st, float3(1,0,0) ),
+							dot( st, float3(1,1,0) ),
+							dot( st, float3(1,0,1) ),
+							dot( st, float3(1,1,1) ) );
+
+	float3	p	= floor(x);
+
+	float3	f	= frac(x);	f	= f*f*(3-2*f);
+	float	n	= dot( p, st );
+	float4	h0	= hash( n + o0 );
+	float4	h1	= hash( n + o1 );
+	float4	hx	= lerp( h0, h1, f.x );
+	float2	hy	= lerp( hx.xz, hx.yw, f.y );
+	return	lerp( hy.x, hy.y, f.z );
+}
+
+
+float	fbm( float3 p ) {
+	static const float	s	= sin(0.5);
+	static const float	c	= cos(0.5);
+	static const float4	a0	= float4( float3( c*c-s*c*s, -s*c-c*c*s,  s*s ) * 2, 40 );
+	static const float4	a1	= float4( float3( c*s+s*c*c, -s*s+c*c*c, -s*c ) * 2, 50 );
+	static const float4	a2	= float4( float3( s*s,        c*s,        c   ) * 2, 60 );
+
+	float4	p0	= float4( p.xyz, 1 );
+	float4	p1	= float4( dot( p0, a0 ), dot( p0, a1 ), dot( p0, a2 ), 1 );
+	float4	p2	= float4( dot( p1, a0 ), dot( p1, a1 ), dot( p1, a2 ), 1 );
+	float4	p3	= float4( dot( p2, a0 ), dot( p2, a1 ), dot( p2, a2 ), 1 );
+
+	float4	nz	= float4( noise( p0.xyz ), noise( p1.xyz ), noise( p2.xyz ), noise( p3.xyz ) );
+
+	float4	aa	= float4( 0.5, 0.25, 0.125, 0.0625 );
+	float4	na	= aa / dot(aa,1);
+	return	dot( nz, na );
+}
+
+float3	noise3( float3 p ) {
+	static const float	s	= sin(0.5);
+	static const float	c	= cos(0.5);
+	static const float4	a0	= float4( float3( c*c-s*c*s, -s*c-c*c*s,  s*s ), 40.12 );
+	static const float4	a1	= float4( float3( c*s+s*c*c, -s*s+c*c*c, -s*c ), 50.23 );
+	static const float4	a2	= float4( float3( s*s,        c*s,        c   ), 60.34 );
+
+	float4	p0	= float4( p.xyz, 1 );
+	float4	p1	= float4( dot( p0, a0 ), dot( p0, a1 ), dot( p0, a2 ), 1 );
+	float4	p2	= float4( dot( p1, a0 ), dot( p1, a1 ), dot( p1, a2 ), 1 );
+
+	return	float3( noise( p0.xyz ), noise( p1.xyz ), noise( p2.xyz ) ) * 2 - 1;
+}
+
+float3	curlNoise( float3 p ) {
+	const float	e	= 1.0/1024.0;
+
+	float3	p_o		= noise3( p );
+	float3	p_x		= noise3( p + float3( e, 0, 0 ) );
+	float3	p_y		= noise3( p + float3( 0, e, 0 ) );
+	float3	p_z		= noise3( p + float3( 0, 0, e ) );
+	float3	vx		= p_x - p_o;
+	float3	vy		= p_y - p_o;
+	float3	vz		= p_z - p_o;
+	float	x		= vy.z - vz.y;
+	float	y		= vz.x - vx.z;
+	float	z		= vx.y - vy.x;
+
+	return	normalize( float3( x , y , z ) );
+}
+
+//
+float3			vCellSize		: CONTROLOBJECT < string name = "Z_Particle_CurlNoiseController.pmx"; string item = "格子サイズ"; >;
+float3			vCycle			: CONTROLOBJECT < string name = "Z_Particle_CurlNoiseController.pmx"; string item = "格子移動"; >;
+float			fNoizeScale		: CONTROLOBJECT < string name = "Z_Particle_CurlNoiseController.pmx"; string item = "風力調整"; >;
+bool 			bCurlNoise		: CONTROLOBJECT < string name = "Z_Particle_CurlNoiseController.pmx";>;
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// 逆行列演算 アクセサリのワールド変換行列に限る
+// 移動の逆行列 * 回転の逆行列 * アクセサリの拡大率10倍の逆行列
+float4x4 inverseDir(float4x4 mat){
+    return float4x4(
+        mat._11, mat._21, mat._31, 0,
+        mat._12, mat._22, mat._32, 0,
+        mat._13, mat._23, mat._33, 0,
+        0,0,0,1
+    );
+}
+
+float4x4 inverse(float4x4 mat){
+    float4x4 mv={
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        -mat._41, -mat._42, -mat._43, 1
+    };
+
+    return mul(mv,inverseDir(mat));
+}
+
+/* ピクセルシェーダー */
+TEX_PS_OUTPUT TexMain_PS(TEX_VS_OUTPUT IN)
+{
+	TEX_PS_OUTPUT Out = (TEX_PS_OUTPUT)0;
+	
+	int index = TexToIndex(IN.Tex, TEX_SIZE, 0.5);
+	
+	//現在の座標
+	float4 NowPos = tex2D(ParticlePosSamp,IN.Tex);
+	
+	//現在の速度と寿命
+	float4 NowVec = tex2D(ParticleVecSamp,IN.Tex);
+
+	//当たり判定オブジェクトとの判定
+	//スケール値計算
+	float FixScale = (Scale-RndScale*abs(cos(index*123.456))) * lerp(ScaleByLife[1],ScaleByLife[0],pow(saturate(NowVec.a),ScalePower));
+	HITOBJ HitObj = Collision(NowPos.xyz,NowVec.xyz,index,FixScale);
+	if(HitObj.HitType != NOHIT)
+	{
+		//反射
+		//NowVec.xyz = reflect((NowVec),normalize(HitObj.HitVec))*CollisionDrag;
+		
+		float Spd = length(NowVec.xyz);
+		
+		float3 rfl = reflect((NowVec),normalize(HitObj.HitVec));
+		float3 rfr = refract((NowVec),normalize(HitObj.HitVec),1);
+		
+		float LocalAttract = Attract;
+		if(HitObj.HitType == HIT_PLANE)
+		{
+			LocalAttract = lerp(0,0.5,Attract);
+		}
+		NowVec.xyz = lerp(rfl,rfr,LocalAttract) * CollisionDrag;
+		NowPos.xyz = HitObj.HitPos;
+		
+		NowVec.a -= CollisionLifeDown*Life;
+	}
+	
+	NowPos.xyz += NowVec.xyz;
+	NowVec.a -= Dt * 1;
+	
+	if(HitObj.HitType == HIT_PLANE)
+	{
+		HitObj = Collision(NowPos.xyz,-Grv,index,FixScale);
+		if(HitObj.HitType == NOHIT)
+		{
+			NowVec.xyz -= Grv;
+		}
+	}else{
+		if(HitObj.HitType == NOHIT)
+		{
+			//ランダム風力
+			
+			if(!bCurlNoise)
+			{
+				//今までのランダム風力
+				float4 rndmove = getRandom(index*1.234+time*1);
+				NowVec.xyz += (rndmove.xyz*2-1)*0.0025*RndYuragi;
+			}else{				
+				//カールノイズを使った風力
+				NowVec.xyz += curlNoise(vCycle * time + NowPos.xyz / vCellSize.x)*0.01 * RndYuragi * fNoizeScale*10;
+			}
+		}
+		NowVec.xyz -= Grv;
+	}
+	//空気抵抗
+	NowVec.xyz *= AirDrag;
+
+
+
+	float4 rnd = getRandom(index+time);
+	float4 rnd2 = getRandom(index*12.345+time);
+	float4 rnd3 = getRandom(index*34.567+time);
+	
+	//水面情報取得
+	int w_index = (int)(index * time*1)%65536;
+	
+	//現在の座標をUVに変換
+	float4x4 InvWaterWorldMatrix = inverse(WaterWorldMatrix);
+	float3 UVPos = mul(float4(NowPos.xyz,1),InvWaterWorldMatrix).xyz/(length(WaterWorldMatrix[1])*100);
+	float2 UVPosTex = UVPos.xz;
+	UVPosTex += 0.5;
+	UVPosTex.y = 1-UVPosTex.y;
+	
+	//現座標の流体データ
+	float4 WaterData = tex2D(BufSamp,UVPosTex);
+	
+	float WaterHeight = -WaterData.z * 0.5;
+	WaterHeight = max(-0.001,WaterHeight);
+	
+	
+	float WaterLen = (UVPos.y - WaterHeight);
+	if(WaterLen < 0)
+	{
+		//水面より下なら浮上する
+		//NowPos.y -= WaterLen;
+		NowVec.xyz += Grv * 1.25;
+	}
+	if(abs(WaterLen) < 0.1)
+	{
+		//水面ベクトルで移動
+		float spdmax = 0.5;
+		NowPos.xz -= min(spdmax,max(-spdmax,WaterData.xy))*50;	
+	}
+	
+	
+	
+	//風球との判定
+	float3 WA = WindAccel(NowPos.xyz,NowVec.xyz);
+	NowVec.a -= length(WA)*0.05;
+	NowVec.xyz += WA;
+	
+	//寿命が0以下なら新しい速度と座標を設定
+	if(NowVec.a < 0)
+	{
+		float2 wtex = abs(rnd2.xy)*CREATESIZE;
+		wtex /= 1024.0;
+		wtex += 0.5-(1.0/(1024/CREATESIZE*2));
+
+		//このアクセサリの座標分ずらす
+		float4x4 CreateMatrix = mul(WorldMatrix,InvWaterWorldMatrix);
+		wtex += CreateMatrix[3].xz/(length(WaterWorldMatrix[1])*length(WaterWorldMatrix[1]));
+		
+		wtex.y =  1 - wtex.y;
+		
+		//流体データ
+		float4 texWatarData = tex2D(BufSamp,wtex);
+		//隣のデータ
+		float4 texWatarData2 = tex2D(BufSamp,wtex+texWatarData.xy);
+		
+		//生成確立
+		float Create = CoefProbable*Tr;
+		
+		texWatarData.xyz *= 10;
+		texWatarData.xy *= 3;
+		texWatarData2.xyz *= 10;
+		texWatarData2.xy *= 3;
+		//泡量計算
+		//隣のデータと比較した際の差分
+		float bubble = length(texWatarData.xy - texWatarData2.xy);
+		bubble = saturate((bubble)*2);
+		bubble = smoothstep(0.5,1.1,bubble);
+		
+		if(mDebug > 0.5) bubble = 1;
+		Create *= bubble;
+		
+		
+		
+		if(Tr <= 0.11 || time < 0.01f) Create = 0;
+		if(abs(cos(rnd2.x+(index*2.12345))) < Create)
+		{	
+			//水面に与えられる速度
+			NowVec.xz = -texWatarData.xy*0.0025;
+			NowVec.y = length(texWatarData.xy)*0.0025;
+			NowVec.xyz = mul(NowVec.xyz,(float3x3)WaterWorldMatrix).xyz * (0.5 + abs(rnd)*0.5);
+			//新しい寿命
+			NowVec.a = Life-abs(cos(rnd.x*123.456))*RndLife;
+			//新しい座標
+			wtex.y = 1-wtex.y;
+			wtex = wtex * 2 - 1;
+			wtex *= 0.5;
+			
+			
+			NowPos = float4(wtex.x,texWatarData.z/10.0,wtex.y,1);
+			NowPos.y = 0;
+			NowPos = mul(NowPos,WaterWorldMatrix);
+			
+			
+			//色操作用
+			NowPos.a = 1;
+		}else{
+			//生成されてない子は遠くへ消し飛ばす
+			NowPos.xyz = 0xffff;
+			NowPos.a = 0;
+			NowVec.a = 0;
+			NowVec.xyz = 0;
+		}
+	}
+	
+	//ビュー座標記録
+	Out.PtclPos = float4(NowPos.xyz,1);
+	Out.PtclPos = mul( Out.PtclPos,ViewMatrix );
+	Out.PtclPos.a = 1;
+
+	//ワールド座標記録
+	Out.Pos = NowPos;
+	
+	//速度＆寿命記録
+	Out.Vec = NowVec;
+	
+	//Trが0なら
+	if(Tr == 0 || time < 0.01)
+	{
+		Out.Pos = 0;
+		Out.Pos.xyz = 0xffff;
+		Out.Vec = 0;
+	}
+	
+	// パーティクルの個数を超える場合は遠くへ
+	Out.Pos = (index>(count))? -1000000 : Out.Pos;
+	Out.PtclPos = (index>(count))? -1000000 : Out.PtclPos;
+	
+	Out.Depth = float4(Out.PtclPos.z,(float)index,0,1);
+	//if(index < 1) Out.Depth.r=1000000;
+	
+	return Out;
+}
+
+//------------------------------------------------------------------------------------------------//
+// パーティクル本体の描画
+
+/* 頂点シェーダー用構造体 */
+struct PTCL_VS_OUTPUT
+{
+	float4 Pos		: POSITION;		// 射影変換座標
+	float2 Tex		: TEXCOORD0;	// テクスチャ
+	float indexF	: TEXCOORD1;	// パーティクルのインデックス
+	float Alpha		: TEXCOORD2;	// パーティクルの透明度
+	float4 VPos		: TEXCOORD3;	// ビュー座標
+	float3 Normal	: TEXCOORD4;
+	float4 ScrPos	: TEXCOORD5;	// スクリーン座標
+	float3 WPos		: TEXCOORD6;
+	float4 pPos		: TEXCOORD7;
+	float4 pVec	 	: TEXCOORD8;
+};
+
+float4x4 ViewMatrixInverse        : VIEWINVERSE;
+static float3x3 BillboardMatrix = {
+    normalize(ViewMatrixInverse[0].xyz),
+    normalize(ViewMatrixInverse[1].xyz),
+    normalize(ViewMatrixInverse[2].xyz),
+};
+
+/* 頂点シェーダー */
+PTCL_VS_OUTPUT PtclMain_VS(float4 Pos : POSITION, float2 Tex : TEXCOORD0,uniform bool bShadow)
+{
+	// 初期化
+	PTCL_VS_OUTPUT Out = (PTCL_VS_OUTPUT)0;
+	
+	// Z値をもとにしたインデックス
+	int indexZ = int(round(Pos.z));
+	
+	// ソート後のインデックスを取得
+	int index = (int)round(tex2Dlod(SortSamp, float4(IndexToTex(indexZ,TEX_SIZE,0.5),0,1)).g);
+	
+	// パーティクルのビュー座標と透明度を取得して移動
+	float2 PtclTex = IndexToTex(index,TEX_SIZE,0.5);
+	float4 PtclData = tex2Dlod(ParticlePosSamp,float4(PtclTex,0,1));
+	float4 VecData = tex2Dlod(ParticleVecSamp,float4(PtclTex,0,1));
+	
+	Out.Pos = float4(Pos.xy,0,1);
+	
+	Out.Normal = float3(Pos.xy,-1);
+	Out.Normal = normalize(Out.Normal);
+	
+	float3 PtclPos = PtclData.rgb;
+	float fLife = saturate(VecData.a / Life);
+	float PtclAlpha = 1 * (1-pow(1-fLife,4));
+	
+	
+	float3 Prev = PtclPos - VecData.xyz*2;
+	float3 Now = PtclPos;
+	
+	//カメラベクトル
+	float3 Eye = CameraPosition - lerp(Prev,Now,0.5);
+	
+	float FixScale = (Scale-RndScale*abs(cos(index*123.456))) * lerp(ScaleByLife[1],ScaleByLife[0],pow(saturate(VecData.a),ScalePower));
+	
+	#ifdef USE_TOON
+		FixScale *= inv_pow(fLife,4);
+	#endif
+	
+	if(length(VecData.xyz) > FixScale*1)
+	{
+		//最大スケールになれるならラインビルボード
+		if(Pos.y > 0)
+		{
+			//先端
+			Out.Pos.xyz = Now;
+		}else{
+			//根元
+			Out.Pos.xyz = Prev;
+		}
+		//パーティクルの長さ
+		float Len = length(Now - Prev);
+		float3 side = cross(normalize(VecData.xyz),normalize(Eye));
+		//大きさ設定は長さ＞横幅だった場合のみ設定
+		Out.Pos.xyz += -side * Pos.x * FixScale;
+		
+		Out.Normal.xyz = normalize(Eye);
+	}else{
+		//そうじゃなきゃビルボード
+		Out.Pos.xy *= FixScale;
+		
+		float4 rndR = getRandom(index*123.456);
+		
+		// パーティクルに回転を与える
+		float rot_z = rndR.x*2*3.1415;
+		float3x3 RotationZ = {
+			{cos(rot_z), sin(rot_z), 0},
+			{-sin(rot_z), cos(rot_z), 0},
+			{0, 0, 1},
+		};
+		float3x3 RevRotationZ = {
+			{cos(-rot_z), sin(-rot_z), 0},
+			{-sin(-rot_z), cos(-rot_z), 0},
+			{0, 0, 1},
+		};
+		Out.Pos.xyz = mul( Out.Pos.xyz, RotationZ );
+		Out.Normal.xyz = mul( Out.Normal, RotationZ);
+		
+		Out.Pos.xyz = mul( Out.Pos, BillboardMatrix);
+		Out.Normal.xyz = mul( Out.Normal, BillboardMatrix);
+		Out.Pos.xyz += Now;
+		
+
+	}
+	Out.WPos = Out.Pos.xyz;
+	
+	
+	// ビュー座標をコピー
+	Out.VPos = mul(Out.Pos,ViewMatrix);
+	// 射影変換を行う(座標はワールドビュー変換済みであるため)
+	Out.Pos = mul( Out.Pos, ViewProjMatrix );
+	
+	// スクリーン座標をコピー
+	Out.ScrPos = Out.Pos;
+	
+	// テクスチャ座標
+	Out.Tex = Tex;
+	
+	Out.indexF = (float)index;
+	Out.Alpha = PtclAlpha;
+	Out.pPos = PtclData;
+	Out.pVec = VecData;
+	
+	// 最大表示数を超えた分は非表示にする
+	Out.Pos.z += (indexZ > count) ? 2 : 0;
+	return Out;
+}
+float3x3 compute_tangent_frame(float3 Normal, float3 View, float2 UV)
+{
+  float3 dp1 = ddx(View);
+  float3 dp2 = ddy(View);
+  float2 duv1 = ddx(UV);
+  float2 duv2 = ddy(UV);
+
+  float3x3 M = float3x3(dp1, dp2, cross(dp1, dp2));
+  float2x3 inverseM = float2x3(cross(M[1], M[2]), cross(M[2], M[0]));
+  float3 Tangent = mul(float2(duv1.x, duv2.x), inverseM);
+  float3 Binormal = mul(float2(duv1.y, duv2.y), inverseM);
+
+  return float3x3(normalize(Tangent), normalize(Binormal), Normal);
+}
+//簡易ポイントライト処理
+float3 AddLight(float3 pos,float3 col,float light,float size,float3 normal,float3 wpos)
+{
+	float3 LightColor = (1-col)*5.0f*(1-light);
+	float3 LightPos = pos;
+	
+	//ライトへのベクトル
+	float3 light_vec = LightPos - wpos;
+	//距離
+	float light_len = length(light_vec);
+	//PLとの光源計算
+	float light_d = saturate(dot(normal,normalize(light_vec)));
+	#ifdef USE_TOON
+		light_d = smoothstep(0.4,0.41,light_d);
+	#endif
+	
+	light_len = 1-saturate(light_len/((0.5+size)*32));
+	//light_len = 1-saturate(light_len);
+	return LightColor * light_len * light_d;
+}
+
+
+/* ピクセルシェーダー */
+float4 PtclMain_PS( PTCL_VS_OUTPUT IN ,uniform bool bShadow) : COLOR0
+{
+	float3 BaseColor = float3(0.25,0.25,0.25);
+	float3 AddColor1 = float3(1,0.5,0)*2;
+	float3 AddColor2 = float3(0.8,0,1)*2;
+	
+	int index = (int)round(IN.indexF);
+	
+	float2 tex = IN.Tex*(1.0/TEXSPLIT);
+	
+	tex.x += (index%TEXSPLIT)*(1.0/TEXSPLIT);
+	tex.y += ((index/TEXSPLIT)%TEXSPLIT)*(1.0/TEXSPLIT);
+	
+	float4 Color = tex2D( BaseSamp, tex );
+	float3 Eye = CameraPosition - IN.WPos;
+	
+	float3x3 tangentFrame = compute_tangent_frame(IN.Normal, -normalize(Eye), IN.Tex);
+	float4 NormalColor = Color*2;	
+	NormalColor = NormalColor.rgba;
+	NormalColor.a = 1;
+	
+	float3 normal = normalize(mul(NormalColor - 1.0f, tangentFrame));
+	
+	
+	float2 ScTex = IN.ScrPos.xyz/IN.ScrPos.w;
+	ScTex = ScTex*float2(0.5,-0.5)+float2(0.5,0.5);
+	Color.rgb = 1;
+	
+	#ifdef RANDOM_COLOR
+		Color.rgb *= float3(abs(cos(index*1.23)),abs(cos(index*2.34)),abs(cos(index*3.56)));
+	#endif
+	
+	#ifndef USE_TOON
+		Color.a *= saturate(IN.Alpha);
+	#endif
+	float4 LastColor;
+	
+	LastColor.rgb = Color.rgb;
+	LastColor.a = Color.a * ParticleColor.a;
+	
+	//----光源計算
+	LastColor.rgb *= LightSpecular+0.7;
+	
+	float nd = saturate(dot(normal,-LightDirection)*0.25+0.75);
+	
+	//TOON//
+	#ifdef USE_TOON
+		nd = saturate(dot(normal,-LightDirection));
+		nd = smoothstep(0.4,0.41,nd);
+		nd = saturate(nd+0.5);
+	#endif
+		
+	LastColor.rgb *= nd;
+	LastColor.rgb *= ParticleColor;
+	
+	//LastColor.a = smoothstep(0,0.1,LastColor.a);
+	
+	float fLife = (IN.pVec.a/Life);
+	
+	float ed = saturate(dot(normal,normalize(Eye)));
+	
+	LastColor.rgb += lerp(AddColorByLife[1],AddColorByLife[0],pow(fLife,AddColorPower))*saturate(lerp(1,ed,AddColorEyeAddjust));
+
+	//簡易ポイントライト処理
+	if(bLight1)	LastColor.rgb += AddLight(LightMat1[3],float3(morph_r1,morph_g1,morph_b1),morph_light1,morph_size1,normal,IN.WPos);
+	if(bLight2)	LastColor.rgb += AddLight(LightMat2[3],float3(morph_r2,morph_g2,morph_b2),morph_light2,morph_size2,normal,IN.WPos);
+	if(bLight3)	LastColor.rgb += AddLight(LightMat3[3],float3(morph_r3,morph_g3,morph_b3),morph_light3,morph_size3,normal,IN.WPos);
+	
+	//スペキュラ
+	float3 HalfVector = normalize( normalize(Eye) + -LightDirection );
+    float3 Specular = pow( max(0,dot( HalfVector, normalize(normal) )), 16 ) * LightSpecular * mSpecularScale * 2;
+	LastColor.rgb += Specular;
+	
+	LastColor.a *= 1 - abs(sin(fLife*3.1415*FlickSpd + index*1.234))*Flick;
+	LastColor.a = smoothstep(0,0.25,LastColor.a);
+	
+	/*
+	//現在の座標
+	float4 NowPos = tex2D(ParticlePosSamp,IndexToTex(index,TEX_SIZE,0.5));
+	
+	//現在の座標をUVに変換
+	float4x4 InvWaterWorldMatrix = inverse(WaterWorldMatrix);
+	float3 UVPos = mul(float4(NowPos.xyz,1),InvWaterWorldMatrix).xyz;
+	float2 UVPosTex = UVPos.xz/(length(WaterWorldMatrix[1])*50);
+	UVPosTex += 0.5;
+	UVPosTex.y = 1-UVPosTex.y;
+	//現座標の流体データ
+	float4 WaterData = tex2D(BufSamp,UVPosTex);
+	LastColor.rgb = abs(WaterData.xyz)*10;
+	*/
+	
+	if(use_spe)
+	{
+		// カメラからの距離!!
+		float dep = length(IN.VPos);
+		float scrdep = tex2D(SPE_DepthSamp,ScTex).r;
+		
+		dep = length(dep-scrdep);
+		dep = smoothstep(0,Si*0.1,dep);
+		LastColor.a *= dep;
+	}
+	
+	if(IN.indexF == 0) Color = 0;
+	
+	return LastColor;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// オブジェクトのワールド座標記録
+
+
+struct VS_OUTPUT_WORLD {
+   float4 Pos      : POSITION;
+   float2 texCoord : TEXCOORD0;
+};
+
+VS_OUTPUT_WORLD WorldCoord_VS(float4 Pos : POSITION)
+{
+    VS_OUTPUT_WORLD Out = (VS_OUTPUT_WORLD)0; 
+
+    Out.Pos = Pos;
+    Out.texCoord = float2(0.5f, 0.5f);
+
+    return Out;
+}
+
+struct WORLD_OUTPUT
+{
+	float4 m0 : COLOR0;
+	float4 m1 : COLOR0;
+	float4 m2 : COLOR0;
+	float4 m3 : COLOR0;
+};
+WORLD_OUTPUT WorldCoord_PS(float2 Tex: TEXCOORD0) : COLOR
+{
+	WORLD_OUTPUT Out;
+	// オブジェクトのワールド座標
+	float3 Pos1 = WaterWorldMatrix._41_42_43;
+	float4 Pos0 = tex2D(WorldCoordSmp3, Tex);
+	
+	
+	// 次発生粒子の起点
+	float probable = length( Pos1 - Pos0.xyz )* CoefProbable * Si*0.1f;
+	float w = Pos0.w + probable;
+	w *= step(w, 1.0f);
+	if(time < 0.001f) w = 0.0;
+
+	float4 Pos = float4(WaterWorldMatrix._41_42_43, w);
+
+	Out.m0 = WaterWorldMatrix[0];
+	Out.m1 = WaterWorldMatrix[1];
+	Out.m2 = WaterWorldMatrix[2];
+	Out.m3 = WaterWorldMatrix[3];
+	return Out;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// 風球の座標記録
+
+struct VS_OUTPUT_WIND {
+   float4 Pos      : POSITION;
+   float2 texCoord : TEXCOORD0;
+};
+
+VS_OUTPUT_WIND WindPos_VS(float4 Pos : POSITION, float2 Tex : TEXCOORD0)
+{
+	VS_OUTPUT_WIND Out = (VS_OUTPUT_WIND)0;
+	Out.Pos = Pos;
+	Out.texCoord = Tex.xy;
+	
+	return Out;
+}
+
+float4 WindPos_PS(float2 Tex: TEXCOORD0) : COLOR
+{
+	float4 Color = 1;
+	//左上（1番）
+	if(Tex.x < 0.5 && Tex.y < 0.5){
+		if(bWindSphere0)
+		{
+			Color.rgb = WindSpPos0[3].xyz;
+		}
+	}else if(Tex.x > 0.5 && Tex.y < 0.5){
+	//右上（2番）
+		if(bWindSphere1)
+		{
+			Color.rgb = WindSpPos1[3].xyz;
+		}
+	}else if(Tex.x < 0.5 && Tex.y > 0.5){
+	//左下（3番）
+		if(bWindSphere2)
+		{
+			Color.rgb = WindSpPos2[3].xyz;
+		}
+	}else{
+	//右下（4番（未使用））
+	}
+	return Color;
+}
+
+float4 ShowTex_PS(float2 Tex:TEXCOORD0) : COLOR
+{
+	return float4(GetWindPos(0),1);
+}
+
+//------------------------------------------------------------------------------------------------//
+// バイトニックソート関連
+
+//ソートの方向 1:降順, -1:昇順
+#define BS_ORDER 1
+
+//バイトニックソート用のテクスチャサイズ
+#define BS_TEX_SIZE TEX_SIZE
+
+#include "function/Bitonic_Sort.fxh"
+
+
+
+//------------------------------------------------------------------------------------------------//
+// テクニックとパス
+
+technique ShadowTech < string MMDPass = "shadow";  > {}
+float4 ClearColor = {0,0,0,1};
+float ClearDepth  = 1.0;
+
+technique MainTec < string MMDPass = "object";
+	string Script = 
+		"ClearSetColor=ClearColor; ClearSetDepth=ClearDepth;"
+		
+		// 座標計算		
+		// ビュー座標計算 & バイトニックソート用のテクスチャに深度を書き込み
+		"RenderColorTarget0=ParticleDataTex;"
+		"RenderColorTarget1=SortTex;"
+		"RenderColorTarget2=ParticlePosTex;"
+		"RenderColorTarget3=ParticleVecTex;"
+		
+		"RenderDepthStencilTarget=Ptcl_DepthBuffer;" "Clear=Depth;"
+		"Pass=DrawTex;"
+		
+		"RenderColorTarget1=;"
+		"RenderColorTarget2=;"
+		"RenderColorTarget3=;"
+		
+		//ワールド座標保存
+		"RenderColorTarget0=WorldCoord0;"
+		"RenderColorTarget1=WorldCoord1;"
+		"RenderColorTarget2=WorldCoord2;"
+		"RenderColorTarget3=WorldCoord3;"
+		"RenderDepthStencilTarget=WorldCoordDepthBuffer;"
+		"Pass=UpdateWorldCoord;"
+		
+		"RenderColorTarget1=;"
+		"RenderColorTarget2=;"
+		"RenderColorTarget3=;"
+		
+		//風球の座標保存
+		"RenderColorTarget0=WindPosTex;"
+		"RenderDepthStencilTarget=WindDepthsBuffer;"
+		"Clear=Color;" "Clear=Depth;"
+		"Pass=UpdateWindPos;"
+		
+		
+		/* SortTexに深度とインデックスが格納される */
+		
+		// ソートを行うスクリプト
+		#if(SORT_ENABLE==1)
+			BITONIC_SORT_SCRIPTS_N( 0)
+			BITONIC_SORT_SCRIPTS_N( 1)
+			BITONIC_SORT_SCRIPTS_N( 2)
+			BITONIC_SORT_SCRIPTS_N( 3)
+			BITONIC_SORT_SCRIPTS_N( 4)
+			BITONIC_SORT_SCRIPTS_N( 5)
+			BITONIC_SORT_SCRIPTS_N( 6)
+			BITONIC_SORT_SCRIPTS_N( 7)
+			BITONIC_SORT_SCRIPTS_N( 8)
+			BITONIC_SORT_SCRIPTS_N( 9)
+			BITONIC_SORT_SCRIPTS_N(10)
+			BITONIC_SORT_SCRIPTS_N(11)
+			#if(PARTICLE_COUNT>4096)
+				// 4096以上
+				BITONIC_SORT_SCRIPTS_N(12)
+				BITONIC_SORT_SCRIPTS_N(13)
+			#endif
+			#if(PARTICLE_COUNT>16384)
+				// 16384以上
+				BITONIC_SORT_SCRIPTS_N(14)
+				BITONIC_SORT_SCRIPTS_N(15)
+			#endif
+		#endif
+		
+		/* SortTexにソート済みの深度とインデックスが保存される */
+		
+		// パーティクルの表示
+		"RenderColorTarget0=;"
+		"RenderDepthStencilTarget=;"
+		"Pass=DrawParticle;"
+		
+		//"Pass=ShowTex;"
+		
+	;
+ > {
+ 	// ソートを行うためのパス
+	BITONIC_SORT_PASSES_N( 0)
+	BITONIC_SORT_PASSES_N( 1)
+	BITONIC_SORT_PASSES_N( 2)
+	BITONIC_SORT_PASSES_N( 3)
+	BITONIC_SORT_PASSES_N( 4)
+	BITONIC_SORT_PASSES_N( 5)
+	BITONIC_SORT_PASSES_N( 6)
+	BITONIC_SORT_PASSES_N( 7)
+	BITONIC_SORT_PASSES_N( 8)
+	BITONIC_SORT_PASSES_N( 9)
+	BITONIC_SORT_PASSES_N(10)
+	BITONIC_SORT_PASSES_N(11)
+	BITONIC_SORT_PASSES_N(12)
+	BITONIC_SORT_PASSES_N(13)
+	BITONIC_SORT_PASSES_N(14)
+	BITONIC_SORT_PASSES_N(15)
+	
+	pass DrawTex < string Script = "Draw=Buffer;"; > {
+		ALPHATESTENABLE = FALSE;
+		ALPHABLENDENABLE = FALSE;
+		VertexShader = compile vs_3_0 TexMain_VS();
+		PixelShader  = compile ps_3_0 TexMain_PS();
+	}
+	
+   pass UpdateWorldCoord < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WorldCoord_VS();
+       PixelShader  = compile ps_2_0 WorldCoord_PS();
+   }
+	
+   pass UpdateWindPos < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WindPos_VS();
+       PixelShader  = compile ps_2_0 WindPos_PS();
+   }
+   pass ShowTex < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WindPos_VS();
+       PixelShader  = compile ps_2_0 ShowTex_PS();
+   }
+	pass DrawParticle < string Script = "Draw=Geometry;"; > {
+		ZENABLE = TRUE;
+		ZWRITEENABLE = FALSE;
+		ALPHABLENDENABLE = TRUE;
+		//SRCBLEND=SRCALPHA;
+		//DESTBLEND=INVSRCALPHA;
+		
+        SRCBLEND = SRCALPHA;
+        DESTBLEND = INVSRCALPHA;
+		VertexShader = compile vs_3_0 PtclMain_VS(false);
+		PixelShader  = compile ps_3_0 PtclMain_PS(false);
+	}
+}
+technique MainTec_ss < string MMDPass = "object_ss";
+	string Script = 
+		"ClearSetColor=ClearColor; ClearSetDepth=ClearDepth;"
+		
+		// 座標計算		
+		// ビュー座標計算 & バイトニックソート用のテクスチャに深度を書き込み
+		"RenderColorTarget0=ParticleDataTex;" "Clear=Color;"
+		"RenderColorTarget1=SortTex;" "Clear=Color;"
+		"RenderColorTarget2=ParticlePosTex;" "Clear=Color;"
+		"RenderColorTarget3=ParticleVecTex;" "Clear=Color;"
+		
+		"RenderDepthStencilTarget=Ptcl_DepthBuffer;" "Clear=Depth;"
+		"Pass=DrawTex;"
+		
+		"RenderColorTarget1=;"
+		"RenderColorTarget2=;"
+		"RenderColorTarget3=;"
+		
+		//ワールド座標保存
+		"RenderColorTarget0=WorldCoord0;"
+		"RenderColorTarget1=WorldCoord1;"
+		"RenderColorTarget2=WorldCoord2;"
+		"RenderColorTarget3=WorldCoord3;"
+		"RenderDepthStencilTarget=WorldCoordDepthBuffer;"
+		"Pass=UpdateWorldCoord;"
+		
+		"RenderColorTarget1=;"
+		"RenderColorTarget2=;"
+		"RenderColorTarget3=;"
+		
+		//風球の座標保存
+		"RenderColorTarget0=WindPosTex;"
+		"RenderDepthStencilTarget=WindDepthsBuffer;"
+		"Clear=Color;" "Clear=Depth;"
+		"Pass=UpdateWindPos;"
+		
+		
+		/* SortTexに深度とインデックスが格納される */
+		
+		// ソートを行うスクリプト
+		#if(SORT_ENABLE==1)
+			BITONIC_SORT_SCRIPTS_N( 0)
+			BITONIC_SORT_SCRIPTS_N( 1)
+			BITONIC_SORT_SCRIPTS_N( 2)
+			BITONIC_SORT_SCRIPTS_N( 3)
+			BITONIC_SORT_SCRIPTS_N( 4)
+			BITONIC_SORT_SCRIPTS_N( 5)
+			BITONIC_SORT_SCRIPTS_N( 6)
+			BITONIC_SORT_SCRIPTS_N( 7)
+			BITONIC_SORT_SCRIPTS_N( 8)
+			BITONIC_SORT_SCRIPTS_N( 9)
+			BITONIC_SORT_SCRIPTS_N(10)
+			BITONIC_SORT_SCRIPTS_N(11)
+			#if(PARTICLE_COUNT>4096)
+				// 4096以上
+				BITONIC_SORT_SCRIPTS_N(12)
+				BITONIC_SORT_SCRIPTS_N(13)
+			#endif
+			#if(PARTICLE_COUNT>16384)
+				// 16384以上
+				BITONIC_SORT_SCRIPTS_N(14)
+				BITONIC_SORT_SCRIPTS_N(15)
+			#endif
+		#endif
+		
+		/* SortTexにソート済みの深度とインデックスが保存される */
+		
+		// パーティクルの表示
+		"RenderColorTarget0=;"
+		"RenderDepthStencilTarget=;"
+		"Pass=DrawParticle;"
+		
+		//"Pass=ShowTex;"
+		
+	;
+ > {
+ 	// ソートを行うためのパス
+	BITONIC_SORT_PASSES_N( 0)
+	BITONIC_SORT_PASSES_N( 1)
+	BITONIC_SORT_PASSES_N( 2)
+	BITONIC_SORT_PASSES_N( 3)
+	BITONIC_SORT_PASSES_N( 4)
+	BITONIC_SORT_PASSES_N( 5)
+	BITONIC_SORT_PASSES_N( 6)
+	BITONIC_SORT_PASSES_N( 7)
+	BITONIC_SORT_PASSES_N( 8)
+	BITONIC_SORT_PASSES_N( 9)
+	BITONIC_SORT_PASSES_N(10)
+	BITONIC_SORT_PASSES_N(11)
+	BITONIC_SORT_PASSES_N(12)
+	BITONIC_SORT_PASSES_N(13)
+	BITONIC_SORT_PASSES_N(14)
+	BITONIC_SORT_PASSES_N(15)
+	
+	pass DrawTex < string Script = "Draw=Buffer;"; > {
+		ALPHATESTENABLE = FALSE;
+		ALPHABLENDENABLE = FALSE;
+		VertexShader = compile vs_3_0 TexMain_VS();
+		PixelShader  = compile ps_3_0 TexMain_PS();
+	}
+	
+   pass UpdateWorldCoord < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WorldCoord_VS();
+       PixelShader  = compile ps_2_0 WorldCoord_PS();
+   }
+	
+   pass UpdateWindPos < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WindPos_VS();
+       PixelShader  = compile ps_2_0 WindPos_PS();
+   }
+   pass ShowTex < string Script= "Draw=Buffer;"; > {
+       ALPHABLENDENABLE = FALSE;
+       ALPHATESTENABLE = FALSE;
+       VertexShader = compile vs_2_0 WindPos_VS();
+       PixelShader  = compile ps_2_0 ShowTex_PS();
+   }
+	pass DrawParticle < string Script = "Draw=Geometry;"; > {
+		ZENABLE = TRUE;
+		ZWRITEENABLE = FALSE;
+		ALPHABLENDENABLE = TRUE;
+		//SRCBLEND=SRCALPHA;
+		//DESTBLEND=INVSRCALPHA;
+		
+        SRCBLEND = SRCALPHA;
+        DESTBLEND = INVSRCALPHA;
+		VertexShader = compile vs_3_0 PtclMain_VS(false);
+		PixelShader  = compile ps_3_0 PtclMain_PS(false);
+	}
+}
+//================================================================================================//

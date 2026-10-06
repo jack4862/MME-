@@ -1,0 +1,148 @@
+////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  マスク用マップ Ver.1.0
+//  改変：ましまし
+//  参考：そぼろさん、針金P、ikenoさん
+//
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if !defined(MASK_COLOR)
+	#define MASK_COLOR	float4(1.0, 1.0, 1.0, 1.0)
+#endif
+
+// 背景まで透過させる閾値を設定します
+float TransparentThreshold = 0.5;
+
+// 透過判定にテクスチャの透過度を使用します。1で有効、0で無効
+#define TRANS_TEXTURE  1
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+// 座標変換行列
+float4x4 WorldViewProjMatrix      : WORLDVIEWPROJECTION;
+float4x4 WorldViewMatrix          : WORLDVIEW;
+
+// マテリアル色
+float4 MaterialDiffuse   : DIFFUSE  < string Object = "Geometry"; >;
+float4 EdgeColor       : EDGECOLOR;
+
+// オブジェクトのテクスチャ
+texture ObjectTexture: MATERIALTEXTURE;
+sampler ObjTexSampler = sampler_state
+{
+    texture = <ObjectTexture>;
+    MINFILTER = LINEAR;
+    MAGFILTER = LINEAR;
+    MIPFILTER = LINEAR;
+    ADDRESSU  = WRAP;
+    ADDRESSV  = WRAP;
+};
+
+// MMD本来のsamplerを上書きしないための記述です。削除不可。
+//sampler MMDSamp0 : register(s0);
+//sampler MMDSamp1 : register(s1);
+//sampler MMDSamp2 : register(s2);
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+// オブジェクト描画（セルフシャドウOFF）
+
+struct VS_OUTPUT
+{
+    float4 Pos        : POSITION;    // 射影変換座標
+    float4 Tex        : TEXCOORD0;   // UV
+    float2 WorldPos   : TEXCOORD1;   // ワールド座標
+};
+
+// 頂点シェーダ
+VS_OUTPUT VS_Object(float4 Pos : POSITION, float3 Normal : NORMAL, float2 Tex : TEXCOORD0)
+{
+    VS_OUTPUT Out = (VS_OUTPUT)0;
+    
+    // カメラ視点のワールドビュー射影変換
+    Out.Pos = mul( Pos, WorldViewProjMatrix );
+    
+    //ワールド座標
+    Out.Tex = mul( Pos, WorldViewMatrix );
+    
+    #if TRANS_TEXTURE!=0
+        Out.WorldPos = Tex; //テクスチャUV
+    #endif
+    
+    return Out;
+}
+
+// ピクセルシェーダ
+float4 PS_Object( VS_OUTPUT IN, uniform bool isObj, uniform bool useTexture ) : COLOR0
+{
+    float alpha;
+    if( isObj ) {
+        alpha = MaterialDiffuse.a;
+        if ( useTexture ) {
+            // テクスチャ透過値適用
+            alpha *= tex2D( ObjTexSampler, IN.WorldPos ).a;
+        }
+    }else{
+        alpha = EdgeColor.a;
+    }
+    // α値が閾値以下の箇所は描画しない
+    clip(alpha - TransparentThreshold);
+
+    // マスク
+    return MASK_COLOR;
+}
+
+// オブジェクト描画(セルフシャドウなし)
+technique DepthTec0 < string MMDPass = "object"; bool UseTexture = false; >
+{
+    pass DrawObject {
+        AlphaBlendEnable = FALSE;
+        VertexShader = compile vs_2_0 VS_Object();
+        PixelShader  = compile ps_2_0 PS_Object(true, false);
+    }
+}
+
+technique DepthTec1 < string MMDPass = "object"; bool UseTexture = true; >
+{
+    pass DrawObject {
+        AlphaBlendEnable = FALSE;
+        VertexShader = compile vs_2_0 VS_Object();
+        PixelShader  = compile ps_2_0 PS_Object(true, true);
+    }
+}
+
+// オブジェクト描画(セルフシャドウあり)
+technique DepthTecSS0 < string MMDPass = "object_ss"; bool UseTexture = false; >
+{
+    pass DrawObject {
+        AlphaBlendEnable = FALSE;
+        VertexShader = compile vs_2_0 VS_Object();
+        PixelShader  = compile ps_2_0 PS_Object(true, false);
+    }
+}
+
+technique DepthTecSS1 < string MMDPass = "object_ss"; bool UseTexture = true; >
+{
+    pass DrawObject {
+        AlphaBlendEnable = FALSE;
+        VertexShader = compile vs_2_0 VS_Object();
+        PixelShader  = compile ps_2_0 PS_Object(true, true);
+    }
+}
+
+// エッジ描画
+technique EdgeTec < string MMDPass = "edge"; > {
+    pass DrawEdget {
+        AlphaBlendEnable = FALSE;
+        VertexShader = compile vs_2_0 VS_Object();
+        PixelShader  = compile ps_2_0 PS_Object(false, false);
+    }
+}
+
+// 地面影は表示しない
+technique ShadowTec < string MMDPass = "shadow"; > { }
+// セルフシャドウは表示しない
+technique ZplotTec < string MMDPass = "zplot"; > { }
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////

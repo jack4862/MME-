@@ -1,0 +1,25 @@
+ビームマンP様の流体水面エフェクトver1.0.4
+https://www.nicovideo.jp/watch/sm36132311
+を改造したエフェクトです。
+
+＜変更点＞
+・当たり判定が水面から高さ4MMDまでの空中にあったのを
+　水面から深さ4MMDに修正しました。
+
+・水面上にあるオブジェクト周囲に発生していた輪郭状のジャギを軽減しました。
+
+・波による水面の高さによって鏡像の位置が動くように変更しました。
+
+＜変更したファイル＞
+・fluid2D.fx
+
+・subフォルダーのVelocityMap.fx、MirrorColor.fx、MirrorDepth.fx
+
+・変更した場所はコメント文で「（修正箇所）」と明示してあります。
+
+＜使用条件＞
+・ビームマンP様のエフェクト利用規約https://w.atwiki.jp/beamman/を
+　遵守してください。
+
+CVN68Nimitz
+Twitter : @cvn68nimitz

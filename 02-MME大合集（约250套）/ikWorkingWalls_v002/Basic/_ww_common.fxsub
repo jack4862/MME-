@@ -1,0 +1,78 @@
+// ã§í ÇÃèÓïÒÅAèàóùÇÇ‹Ç∆ÇﬂÇΩÇ‡ÇÃ
+
+#define PI 3.14159265
+#define DEG2RAD(x)	((x) * PI / 180.0)
+#define RAD2DEG(x)	((x) / PI * 180.0)
+
+#define DECLARE_PARAM(_t,_var,_item)	\
+	_t _var : CONTROLOBJECT < string name = CONTROLLER_NAME; string item = _item;>;
+
+#if HALF_DRAW==0
+	#define TEXSIZE1  1
+#else
+	#define TEXSIZE1  0.5
+#endif
+
+DECLARE_PARAM(float4x4, mWorldMat, BONE_NAME);
+DECLARE_PARAM(float, mAngle, "äpìx");
+DECLARE_PARAM(float, mColorH, "H");
+DECLARE_PARAM(float, mColorS, "S");
+DECLARE_PARAM(float, mColorV, "V");
+
+//-----------------------------------------------------------------------------
+
+float4x4 GetInverseMatrix(float4x4 mat)
+{
+	float3x3 matRot = transpose((float3x3)mat);
+	return float4x4(
+		matRot[0], 0,
+		matRot[1], 0,
+		matRot[2], 0,
+		mul(-mat[3].xyz, matRot), 1);
+}
+
+float3 hsv2rgb(float3 c)
+{
+	float3 hcol = saturate((abs(frac(c.x + float3(3,2,1)/3)*6 - 3) - 1));
+	return float3(lerp(1, hcol, c.y) * c.z);
+}
+
+//-----------------------------------------------------------------------------
+
+static float3 Origin = mWorldMat._41_42_43;
+static float4x4 MirrorScaledMatrix = mWorldMat;
+static float4x4 MirrorInvMatrix = GetInverseMatrix(mWorldMat);
+
+static float MirrorAngle = lerp(MinMirrorAngle, MaxMirrorAngle, mAngle);
+
+static float3 MirrorColor = hsv2rgb(float3(
+	mColorH, 
+	min(mColorS, 0.999),
+	saturate(1.0 - min(mColorV, 0.999))));
+
+//-----------------------------------------------------------------------------
+
+float3x3 RoundMatrixY(float rotY)
+{
+	float siny, cosy;
+	sincos(rotY, siny, cosy);
+	return float3x3(cosy, 0, -siny, 0, 1, 0, siny, 0, cosy);
+}
+
+float4x4 RoundMatrixY(float rotY, float mirrorY)
+{
+	float3x3 matRot = RoundMatrixY(rotY * mirrorY);
+
+	// îΩì]
+	matRot._11 *= mirrorY;
+	matRot._21 *= mirrorY;
+	matRot._31 *= mirrorY;
+
+	float4x4 result = float4x4(
+		matRot[0], 0,
+		matRot[1], 0,
+		matRot[2], 0,
+		float4(0,0,0,1));
+
+	return mul(mul(MirrorInvMatrix, result), MirrorScaledMatrix);
+}

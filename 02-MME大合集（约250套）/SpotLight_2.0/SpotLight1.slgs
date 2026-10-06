@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Setting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ID>1</ID>
+  <UseShadow>true</UseShadow>
+  <LightR>154</LightR>
+  <LightG>154</LightG>
+  <LightB>154</LightB>
+  <Power>2</Power>
+  <ShadowColor1>1</ShadowColor1>
+  <ShadowColor2>0.5</ShadowColor2>
+  <DistanceAttenuate>1</DistanceAttenuate>
+  <SoftShadow>true</SoftShadow>
+  <UseMipMap>true</UseMipMap>
+  <TexShadow>true</TexShadow>
+  <BufAA>false</BufAA>
+  <BufSize>1024</BufSize>
+  <Unsubject />
+  <ShadowAlpha>0.60000000000000009</ShadowAlpha>
+  <AFilter>false</AFilter>
+  <SaveCheck>true</SaveCheck>
+  <AutoSaveSetting>true</AutoSaveSetting>
+</Setting>

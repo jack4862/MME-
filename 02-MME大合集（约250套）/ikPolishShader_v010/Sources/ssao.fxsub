@@ -1,0 +1,155 @@
+////////////////////////////////////////////////////////////////////////////////////////////////
+// SSAO
+
+#if SSAORayCount > 0
+
+// 針金P の HgSAO.fx ver0.0.1 を参考に改造。
+// ただし、ほとんどの処理は元のSSAOのままになっている。
+/*
+  Open Source under the "BSD" license: http://www.opensource.org/licenses/bsd-license.php
+
+  Copyright (c) 2011-2012, NVIDIA
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright notice,
+     this list of conditions and the following disclaimer.
+  2. Redistributions in binary form must reproduce the above copyright notice,
+     this list of conditions and the following disclaimer in the documentation
+     and/or other materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+  ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+static float InvDepthLength6 = 1.0 / pow(DepthLength, 6);
+static float2 SSAORadiusA = (-100.0 * DepthLength / SSAORayCount / ViewportSize);
+static float2 SSAORadiusB = (64.0 / 1024.0) / SSAORayCount * ViewportAspect;
+
+// レイが遮蔽されている確率
+inline float GetOccRate(float2 texCoord, float3 WPos, float3 N)
+{
+	#if defined(ENABLE_SSGI) && ENABLE_SSGI > 0
+	float3 RayPos = GetWPos_SSGI(texCoord);
+	#else
+	float3 RayPos = GetWPos(texCoord);
+	#endif
+
+	const float SSAO_BIAS = 0.01;
+
+	float3 v = RayPos - WPos;
+	float distance2 = dot(v, v);
+	float dotVN = max(dot(v, N) - SSAO_BIAS, 0.0f);
+	float f = max(DepthLength * DepthLength - distance2, 0.0f);
+	float f3 = f * f * f;
+	float ao = f3 * InvDepthLength6 * dotVN / (distance2 + 1e-3);
+
+	return min(ao, 1.0);
+}
+
+float4 PS_SSAO( float4 Tex: TEXCOORD0 ) : COLOR
+{
+	float2 texCoord = Tex.zw;
+
+	float3 WPos;
+	float3 N;
+	float Depth;
+	GetWND(texCoord, WPos, N, Depth);
+
+	int2 rndTexOffset = int2(texCoord * ViewportSize * WORKSPACE_SCALE);
+	int index = (rndTexOffset.x % 4) * 4 + (rndTexOffset.y % 4);
+
+	float radMul = 1.0 / SSAORayCount * (3.14 * 2.0 * 7.0);
+	float radAdd = JitterOffsets[index] * (PI * 2.0);
+
+	// 深度に応じて探索範囲を変えるとモアレが酷い。
+	//float2 radiusMul = SSAORadiusA / Depth;
+	float2 radiusMul = SSAORadiusB;
+	//float2 radiusMul = (SSAORadiusA / Depth + SSAORadiusB) * 0.5;
+
+	#if defined(ENABLE_SSGI) && ENABLE_SSGI > 0
+	texCoord = (texCoord - 0.5) * GIFrameScale + 0.5;
+	radiusMul *= GIFrameScale;
+	#endif
+
+	float sum = 0.0;
+	float4 col = 0;
+
+	// MEMO: unrollするとレジスタを使い過ぎてコンパイルが通らない
+	// [unroll]
+	for(int j = 0; j < SSAORayCount; j++)
+	{
+		float2 sc;
+		sincos(j * radMul + radAdd, sc.x, sc.y);
+		float2 r = j * radiusMul;
+		float2 uv = sc * r + texCoord;
+
+		float ao = GetOccRate(uv, WPos, N);
+		#if defined(ENABLE_SSGI) && ENABLE_SSGI > 0
+		col += GetSSGI(uv) * ao;
+		#endif
+		sum += ao;
+	}
+
+	// 元のSAOのソースでは、ddx/ddyでクアッド単位の
+	// 補正を行っていた。
+
+	float s = saturate(1.0 - (sum * (1.0 / SSAORayCount) * AmbientPower));
+	return float4(col.rgb * (1.0 / SSAORayCount), s);
+}
+
+
+// SSAO用のボカし
+float4 PS_BlurSSAO( float4 Tex: TEXCOORD0, uniform bool isXBlur, uniform sampler smp) : COLOR
+{
+	float2 offset = (isXBlur) ? float2(SampStep.x, 0) : float2(0, SampStep.y);
+
+	float4 color = tex2D( smp, Tex.zw );
+	float depth = GetDepth(Tex.zw );
+	float depthRate = 100.0 / (depth + 1.0);
+	float wsum = 1;
+
+	[unroll] for(int i = 1; i < 8; i ++)
+	{
+		float t2 = -(i * i) * (1.0 / (8.0 * 8.0));
+		float4 cp = tex2D(smp, Tex.zw + offset * i);
+		float4 cn = tex2D(smp, Tex.zw - offset * i);
+		float depthp = GetDepth(Tex.zw + offset * i);
+		float depthn = GetDepth(Tex.zw - offset * i);
+		float wp = CalcBlurWeight(depth, depthp, t2, depthRate);
+		float wn = CalcBlurWeight(depth, depthn, t2, depthRate);
+		color += cp * wp + cn * wn;
+		wsum += wp + wn;
+	}
+
+	return color / wsum;
+}
+
+inline float GetSSAO(float2 tex) { return tex2D(SSAOWorkMapSamp, tex).w;}
+
+inline float4 GetSSAOFull(float2 tex)
+{
+	float4 col = tex2D(SSAOWorkMapSamp, tex);
+	#if defined(ENABLE_SSGI) && ENABLE_SSGI > 0
+		col.rgb *= GIScale;
+	#endif
+	return col;
+}
+
+#else
+
+inline float GetSSAO(float2 tex) { return 1.0;}
+inline float4 GetSSAOFull(float2 tex) { return float4(0,0,0,1); }
+
+#endif
+

@@ -1,0 +1,250 @@
+//--------------------------------------------------------------------------------------
+//	モデル崩壊エフェクトのそれっぽいところだけ抜き出したやつ
+
+
+
+#define LARGEUV	 		500		// 目印用のUVのx座標閾値
+#define	NOT_USE_ROUND_TEX		//	これを定義しておくと P角落とし.pngを使用しない
+//#define	NOT_USE_ARRANGE_TEX		//	これを定義しておくと Arrange.png を使用しない
+
+
+float particle_thin					: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P薄め"; >;
+float Pbright						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P発光"; >;
+float Pdark							: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P闇"; >;
+float PRplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P赤+"; >;
+float PGplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P緑+"; >;
+float PBplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P青+"; >;
+float PRminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P赤-"; >;
+float PGminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P緑-"; >;
+float PBminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P青-"; >;
+float thinmodel						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル薄め"; >;
+float Mbright						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル発光"; >;
+float Mdark							: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル闇"; >;
+float MRplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル赤+"; >;
+float MGplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル緑+"; >;
+float MBplus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル青+"; >;
+float MRminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル赤-"; >;
+float MGminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル緑-"; >;
+float MBminus						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="モデル青-"; >;
+float b_blur						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="境界ぼかし"; >;
+float blow_diverse					: CONTROLOBJECT <string name = CONTROLLERNAME; string item="拡散";>;
+
+
+float4 Root							: CONTROLOBJECT <string name = CONTROLLERNAME; string item="全ての親"; >;
+float4x4 controller_worldmatrix		: CONTROLOBJECT <string name = CONTROLLERNAME; string item="面崩壊"; >;
+float4 blow_direction				: CONTROLOBJECT <string name = CONTROLLERNAME; string item="飛散方向";>;
+float4 Ball_center					: CONTROLOBJECT <string name = CONTROLLERNAME; string item="球崩壊中心"; >;
+float4 Ball_collapse				: CONTROLOBJECT <string name = CONTROLLERNAME; string item="球崩壊内→外"; >;
+float4 Ball_converge				: CONTROLOBJECT <string name = CONTROLLERNAME; string item="球崩壊外→内"; >;
+
+float4 TransparentPCulling			: CONTROLOBJECT <string name = CONTROLLERNAME; string item="Pクリップ"; >;
+
+float PRound						: CONTROLOBJECT <string name = CONTROLLERNAME; string item="P角落とし"; >;
+
+
+#define FARAWAY float4(0,0,0,-1) //Pクリップで指定範囲からはみ出した破片の行先
+
+
+#ifndef	NOT_USE_ROUND_TEX
+// 破片の角を取るためのテクスチャ
+texture RoundTex <
+	string ResourceName = "P角落とし.png";
+	int Miplevels = 1;
+>;
+sampler RoundSampler = sampler_state {
+	texture = <RoundTex>;
+	MINFILTER = LINEAR;
+	MAGFILTER = LINEAR;
+	MIPFILTER = NONE;
+	ADDRESSU  = CLAMP;
+	ADDRESSV  = CLAMP;
+};
+#endif
+
+///////////////////////////////////////////////////////////////////////
+///////////////////////////////  JetSmoke.fx(by 針金P)から頂いた部分 ここから
+#ifndef	NOT_USE_ARRANGE_TEX
+
+#define ArrangeFileName "Arrange.png" // 配置･乱数情報ファイル名
+#define TEX_WIDTH_A  16   // 配置･乱数情報テクスチャピクセル幅
+#define TEX_WIDTH	  2   // 座標情報テクスチャピクセル幅
+#define TEX_HEIGHT 1024   // 配置･乱数情報テクスチャピクセル高さ
+
+
+// 配置･乱数情報テクスチャ
+texture2D ArrangeTex <
+	string ResourceName = ArrangeFileName;
+>;
+sampler ArrangeSmp : register(s3) = sampler_state{
+	texture = <ArrangeTex>;
+	MinFilter = POINT;
+	MagFilter = POINT;
+	MipFilter = NONE;
+};
+
+// 配置･乱数情報テクスチャからデータを取り出す
+float RandomVS(int i, int j)
+{
+	float4 d = tex2Dlod(ArrangeSmp, float4((i+0.5)/TEX_WIDTH_A, (j+0.5f)/TEX_HEIGHT, 0, 1));
+	float tNum = (65536.0f * d.x + 256.0f * d.y + d.z) * 255.0f;
+	int pNum = (int)(d.w * 255);
+	int sgn = 1 - 2 * (pNum % 2);
+	float data = tNum * pow(10.0f, pNum/2 - 64) * sgn;
+	return data;
+}
+
+float RandomPS(int i, int j)
+{
+	float4 d = tex2D(ArrangeSmp, float2((i+0.5)/TEX_WIDTH_A, (j+0.5f)/TEX_HEIGHT));
+	float tNum = (65536.0f * d.x + 256.0f * d.y + d.z) * 255.0f;
+	int pNum = (int)(d.w * 255);
+	int sgn = 1 - 2 * (pNum % 2);
+	float data = tNum * pow(10.0f, pNum/2 - 64) * sgn;
+	return data;
+}
+
+#endif
+///////////////////////////////  JetSmoke.fxから頂いた部分 ここまで
+////////////////////////////////////////////////////////////////////////
+
+int mod(int x, int y){
+//	return x-(int)((float)x/(float)y)*y;
+	return x-floor((float)x/(float)y)*y;
+}
+
+//	テクスチャ使わない乱数生成ルーチン（一部のグラボで正しく動作しない）
+float saw(float x){
+	return (x-floor(x))/3.1415926535;
+}
+
+// 乱数を取得。0～65535。nは適当な整数
+float	rand( int n, float seed ) {
+	return	floor((saw((n+1.0)*seed*100.0))*65535.0) / 65535.0;
+}
+
+float sqr(float x){
+	return x*x;
+}
+
+
+float3 WorldMatrix2YAxis(float4x4 wm){
+	return	wm._21_22_23;
+}
+
+float3 WorldMatrix2Position(float4x4 wm){
+	return	wm._41_42_43;
+}
+
+float CurTime : TIME;
+float FrameTime : TIME <bool SyncInEditMode=true;>;
+// MMDが再生中か否か。再生中は、CurTimeとFrameTimeが一致することを利用。
+static bool IsPlayMode = CurTime!=0 && CurTime==FrameTime;
+
+float TimeDifWM(float4 Pos){
+	float3	cpos=WorldMatrix2Position(controller_worldmatrix);
+	float3	yaxis=WorldMatrix2YAxis(controller_worldmatrix);
+	float3 rel_pos=Pos-cpos;
+	float collapse1= -dot(rel_pos,yaxis);
+	float collapse2= (Ball_collapse.y-Ball_center.y)-length(Pos-Ball_center);
+	float collapse3= length(Pos-Ball_center)-(Ball_center.y-Ball_converge.y+30);
+
+	return max(max(max(collapse1, collapse2), collapse3), 0);
+}
+
+float4 PositionShift(float4 Pos, float3 D, float2 Tex,	int rand_seed){
+#ifndef	NOT_USE_ARRANGE_TEX
+	float r=RandomVS(rand_seed, rand_seed);
+#else
+	float r=rand( rand_seed, 2.2360679 )*2;
+#endif
+	float4 Direction1=sqr(TimeDifWM(Pos))*r*float4(D,0);
+	float4 bd= float4(blow_direction.xyz - Root.xyz,0);
+	float4 Direction2=sqr(TimeDifWM(Pos))*bd/10;
+
+	return (1+blow_diverse)*Direction1 + (1-blow_diverse)*Direction2;
+}
+
+float3 ColorBoost(float d){
+	// dは元の位置からの距離のはずだけど、なぜか負になることがある
+	// 負の場合はColorBoostを0にすると綺麗な出力になる
+	float pd= (d>0 ? d : 0);
+	float3 ret=(float3)0;
+
+	ret.r+=(MRplus-MRminus)*2+(PRplus-PRminus)*1*pd*(saturate(TransparentPCulling.y/2.0f));
+	ret.g+=(MGplus-MGminus)*2+(PGplus-PGminus)*1*pd*(saturate(TransparentPCulling.y/2.0f));
+	ret.b+=(MBplus-MBminus)*2+(PBplus-PBminus)*1*pd*(saturate(TransparentPCulling.y/2.0f));
+
+	ret+=(Mbright-Mdark)*2+(Pbright-Pdark)*1*pd*(saturate(TransparentPCulling.y/2.0f));
+
+	return ret;
+}
+
+float4 ParticleAlpha_Common(float4 Pos, float d, float2 Tex){
+	float4 Out=(float4)0;
+	float f=d/(TransparentPCulling.y*0.8f);
+	Out.x=(d==0 && Tex.x>LARGEUV ? 0: 1);
+	Out.y = saturate(1-(f>0 ?f:0)-thinmodel);
+	Out.z = (Tex.x<LARGEUV ? saturate(1-(1-b_blur)*20*TimeDifWM(float4(Pos.x,Pos.y,Pos.z,Pos.w))): 1);
+	Out.w=saturate(1-particle_thin*d);
+
+	return Out;
+}
+
+float ParticleAlpha(float4 Pos, float d, float2 Tex, float2 PRoundTex){
+	float4 Common=ParticleAlpha_Common(Pos,d,Tex);
+
+#ifndef	NOT_USE_ROUND_TEX
+	float3 w=(Tex.x<LARGEUV ? float3(1,1,1) : tex2D(RoundSampler,PRoundTex));
+#else
+	float3 w=(Tex.x<LARGEUV ? float3(1,1,1) : 1-pow( saturate( length((PRoundTex-0.5)*4) ), 2.0 ) );
+#endif
+
+
+///  この辺で悩み中
+
+	float r1=saturate(w.r);
+	float r2=saturate(pow(-d/5,2.0f));
+
+	return Common.x*Common.y*Common.z*Common.w*(r1*r2+r1-r2);
+}
+
+
+static float2 PRoundUV1= float2(0,0.8f);
+static float2 PRoundUV2= float2(1,0.8f);
+static float2 PRoundUV3= float2(0.5,0);
+float2	RoundUV( float fIndex ) {
+	int m=mod( fIndex, 3 );
+	float2 end=(m==0 ? PRoundUV1: (m== 1 ? PRoundUV2: PRoundUV3));
+	float2 origin=float2(0.5,0.5);
+
+	return PRound*end+(1-PRound)*origin;
+}
+
+void	CalcCollapse(	inout float4	vWorld
+					,	float3			vNormal
+					,	float2			vTex
+					,	int				iIndex
+					,	out float4		ovPosition
+					,	out float2		ovXis
+					,	out float2		ovPRound
+				)
+{
+	//	頂点インデックス/3を乱数の種に使う--->分解された面の頂点が一斉に同じ方向に動く
+	int		rand_seed	= floor( iIndex/3.0 );
+	float4	PosShift	= (float4)0;
+	float	timedif		= TimeDifWM( vWorld );
+	if( timedif > 0 ) {
+		PosShift	= PositionShift( vWorld, vNormal, vTex, rand_seed );
+	}
+	ovXis.x		= length( PosShift.xyz );
+	ovXis.y		= 0.0;
+
+	ovPosition	= vWorld;
+	if( vTex.x > LARGEUV ) {
+		vWorld.xyz	+= PosShift.xyz;
+	}
+
+	//パーティクル角落とし用UV座標
+	ovPRound	= RoundUV( iIndex );
+}
+

@@ -1,0 +1,156 @@
+[Info]
+Version = 3
+
+[Object]
+Acs1 = MME\msToonCoordinator_v1.1\Shade.x
+Pmd2 = 建模工程\苍琰式シャーロック·ホームズ(FGO)ver.1.0\ホームズ·灵基Ⅱ.pmx
+Pmd3 = MME\msToonCoordinator_v1.1\msToonCoordinatorController.pmx
+Pmd4 = 建模工程\苍琰式シャーロック·ホームズ(FGO)ver.1.0\ホームズ·灵基Ⅰ.pmx
+Pmd5 = MME\tn_PostPointLight_03\tn_PostPointLight.pmx
+Acs6 = MME\ExcellentShadow2\ExcellentShadow.x
+Acs7 = MME\msToonCoordinator_v1.1\Edge.x
+
+[Effect]
+Default = MME\msToonCoordinator_v1.1\Main\SimplePaint_EgeOff.fx
+Pmd2 = MME\msToonCoordinator_v1.1\Main\SimplePaint_EgeOff.fx
+Pmd3 = MME\msToonCoordinator_v1.1\Main\SimplePaint_EgeOff.fx
+Pmd4 = MME\msToonCoordinator_v1.1\Main\SimplePaint_EgeOff.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
+[Effect@msTC_ShadeRT]
+Owner = Acs1
+Acs1.show = false
+Pmd2 = MME\msToonCoordinator_v1.1\Shade\Shade_ExShadow.fx
+Pmd2.show = true
+Pmd2[0] = MME\msToonCoordinator_v1.1\test\Shade_kao.fx
+Pmd2[1] = MME\msToonCoordinator_v1.1\test\Shade_kao.fx
+Pmd2[2] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[3] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[4] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[5] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[6] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[8] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[9] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[10] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd2[11] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[12] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[13] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[14] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[15] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[16] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd2[17] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[18] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[19] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[20] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[21] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[22] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[23] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[24] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd2[25] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd2[26] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[29] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[30] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd2[31] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd2[32] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd2[33] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd2[34] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd3 = none
+Pmd3.show = false
+Pmd4 = MME\msToonCoordinator_v1.1\Shade\Shade_ExShadow.fx
+Pmd4[0] = MME\msToonCoordinator_v1.1\test\Shade_kao.fx
+Pmd4[1] = MME\msToonCoordinator_v1.1\test\Shade_kao.fx
+Pmd4[2] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[3] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[4] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[5] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[6] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[8] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[9] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[10] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd4[11] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[12] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[13] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[14] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[15] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[16] = MME\msToonCoordinator_v1.1\test\Shade_hair.fx
+Pmd4[17] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[18] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[19] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[20] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[21] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[22] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[23] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[24] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[26] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd4[27] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd4[28] = MME\msToonCoordinator_v1.1\test\Shade_fuku2.fx
+Pmd4[29] = MME\msToonCoordinator_v1.1\test\Shade_fuku1.fx
+Pmd4[30] = MME\msToonCoordinator_v1.1\test\Shade_OFF.fx
+Pmd5.show = false
+Acs6.show = true
+Acs7.show = true
+
+[Effect@ExcellentShadowZMap]
+Owner = Acs6@msTC_ShadeRT
+Acs1.show = false
+Pmd2 = MME\ExcellentShadow2\ExcellentShadowZBufDraw.fx
+Pmd3 = MME\ExcellentShadow2\ExcellentShadowZBufDraw.fx
+Pmd4 = MME\ExcellentShadow2\ExcellentShadowZBufDraw.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
+[Effect@ExcellentShadowZMapFar]
+Owner = Acs6@msTC_ShadeRT
+Acs1.show = false
+Pmd2 = MME\ExcellentShadow2\ExcellentShadowZBufDrawFar.fx
+Pmd3 = MME\ExcellentShadow2\ExcellentShadowZBufDrawFar.fx
+Pmd4 = MME\ExcellentShadow2\ExcellentShadowZBufDrawFar.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
+[Effect@ScreenShadowMap]
+Owner = Acs6@msTC_ShadeRT
+Acs1.show = false
+Pmd2 = MME\ExcellentShadow2\ExcellentShadowObject.fx
+Pmd3 = MME\ExcellentShadow2\ExcellentShadowObject.fx
+Pmd4 = MME\ExcellentShadow2\ExcellentShadowObject.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
+[Effect@msTC_EdgeRT]
+Owner = Acs7@msTC_ShadeRT
+Acs1.show = false
+Pmd2 = MME\msToonCoordinator_v1.1\Edge\Edge_ON.fx
+Pmd3 = none
+Pmd3.show = false
+Pmd4 = MME\msToonCoordinator_v1.1\Edge\Edge_ON.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
+[Effect@msTC_SubLightRT]
+Owner = Acs1
+Acs1.show = false
+Pmd2 = MME\msToonCoordinator_v1.1\SubLight\SubLight_ON.fx
+Pmd3 = none
+Pmd3.show = false
+Pmd4 = MME\msToonCoordinator_v1.1\SubLight\SubLight_ON.fx
+Pmd5.show = true
+Acs6.show = false
+Acs7.show = false
+
+[Effect@PointLightRT]
+Owner = Pmd5@msTC_SubLightRT
+Acs1.show = false
+Pmd2 = MME\tn_PostPointLight_03\tn_RT_Model.fx
+Pmd3 = MME\tn_PostPointLight_03\tn_RT_Model.fx
+Pmd4 = MME\tn_PostPointLight_03\tn_RT_Model.fx
+Pmd5.show = false
+Acs6.show = false
+Acs7.show = false
+
